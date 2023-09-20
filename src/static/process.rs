@@ -114,7 +114,7 @@ async fn main() {
             id: Some(agency.agency_id.clone()),
             name: agency.name.clone(),
             url: agency.url.clone(),
-            timezone: agency.timezone.clone(),
+            timezone: String::from("America/Los_Angeles"),
             lang: Some(agency.language.clone()),
             phone: agency.phone.clone(),
             fare_url: None,
@@ -151,6 +151,35 @@ async fn main() {
     let stops:TranslocStops = serde_json::from_str(&stopsjson).unwrap();
 
     let mut segments_map:HashMap<String, LineString<f64>> = HashMap::new();
+
+        let mut stopswriter = Writer::from_writer(vec![]);
+
+        //STOPS
+        for stop in stops.data.iter() {
+            stopswriter.serialize(gtfs_structures::Stop {
+                id: stop.stop_id.clone(),
+                code: Some(stop.code.clone()),
+                name: stop.name.clone(),
+                description: stop.description.clone(),
+                location_type: gtfs_structures::LocationType::StopPoint,
+                parent_station: None,
+                zone_id: None,
+                url: Some(stop.url.clone()),
+                timezone: Some(String::from("America/Los_Angeles")),
+                latitude: Some(stop.location.lat.into()),
+                longitude: Some(stop.location.lng.into()),
+                wheelchair_boarding: gtfs_structures::Availability::Available,
+                level_id: None,
+                platform_code: None,
+                transfers: vec![],
+                pathways: vec![]
+            }).unwrap();
+        }
+
+        let stops_csv = String::from_utf8(stopswriter.into_inner().unwrap()).unwrap();
+        let mut stopsfile = File::create("anteater_gtfs/stops.txt").unwrap();
+
+        stopsfile.write_all(stops_csv.as_bytes()).unwrap();
 
     for (segment_id, segment_data) in segments.data.iter() {
         //println!("{}, {}",segment_id, segment_data)
