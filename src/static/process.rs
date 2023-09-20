@@ -179,7 +179,7 @@ async fn main() {
                 location_type: gtfs_structures::LocationType::StopPoint,
                 parent_station: None,
                 zone_id: None,
-                url: Some(stop.url.clone()),
+                url: None,
                 timezone: Some(String::from("America/Los_Angeles")),
                 latitude: Some(stop.location.lat.into()),
                 longitude: Some(stop.location.lng.into()),
@@ -212,7 +212,7 @@ async fn main() {
 
     for (agency_id, routes_array) in routes.data.iter() {
         for route in routes_array {
-            println!("Route: {:?}", route);
+           // println!("Route: {:?}", route);
 
             routeswriter.serialize(gtfs_structures::Route {
                 id: route.route_id.clone(),
@@ -221,7 +221,7 @@ async fn main() {
                 long_name: route.long_name.clone(),
                 desc: Some(route.description.clone()),
                 route_type: gtfs_structures::RouteType::Bus,
-                url: Some(route.url.clone()),
+                url: Some(format!("https://shuttle.uci.edu/routes/{}-line", route.short_name.clone().as_str().to_lowercase())),
                 color: hextorgb(route.color.clone()),
                 text_color: hextorgb(route.text_color.clone()),
                 order: None,

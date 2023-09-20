@@ -1,6 +1,6 @@
 route_id,route_short_name,route_long_name,route_desc,route_type,route_url,agency_id,route_sort_order,route_color,route_text_color,continuous_pickup,continuous_drop_off
-8006640,H,Line,,3,,1039,,14B3C4,000000,1,1
-8006668,N,Line,,3,,1039,,F77A2D,000000,1,1
-8006670,M,Line,,3,,1039,,12E32B,000000,1,1
-8006672,A,Line,,3,,1039,,FBF140,000000,1,1
-8006676,E,Line,,3,,1039,,9E4DEF,000000,1,1
+8006640,H,Line,,3,https://shuttle.uci.edu/routes/h-line,1039,,14B3C4,000000,1,1
+8006668,N,Line,,3,https://shuttle.uci.edu/routes/n-line,1039,,F77A2D,000000,1,1
+8006670,M,Line,,3,https://shuttle.uci.edu/routes/m-line,1039,,12E32B,000000,1,1
+8006672,A,Line,,3,https://shuttle.uci.edu/routes/a-line,1039,,FBF140,000000,1,1
+8006676,E,Line,,3,https://shuttle.uci.edu/routes/e-line,1039,,9E4DEF,000000,1,1
