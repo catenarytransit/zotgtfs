@@ -3,7 +3,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Map;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
+use std::fs;
 use std::io::Write;
+use csv::Writer;
+use polyline;
+use gtfs_structures;
+use geo_types::geometry::LineString;
 
 #[derive(Deserialize, Debug, Serialize)]
 struct TranslocAgencies {
@@ -24,14 +29,14 @@ struct TranslocPos {
 #[derive(Deserialize, Debug, Serialize)]
 struct TranslocAgency {
     long_name: String,
-    languge: String,
+    language: String,
     position: TranslocPos,
     short_name: String,
     name: String,
     phone: Option<String>,
     url: String,
     timezone: String,
-    boundingbox: Vec<TranslocPos>,
+    bounding_box: Vec<TranslocPos>,
     agency_id: String,
 }
 
@@ -49,18 +54,19 @@ struct TranslocSegments {
 struct TranslocRoute {
     description: String,
     long_name: String,
-    segments: Vec<String>,
+    segments: Vec<Vec<String>>,
     short_name: String,
     //does not have #
     color: String,
     text_color: String,
     is_active: bool,
     route_id: String,
-    agency_id: String,
+    agency_id: i32,
     url: String,
     #[serde(rename(deserialize = "type"))]
     route_type: String,
     is_hidden: bool,
+    stops: Vec<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -101,5 +107,110 @@ struct TranslocStops {
 #[tokio::main]
 async fn main() {
     let agenciesjson = fs::read_to_string("staticfiles/agencies.json").expect("Unable to read file");
-    let agencies = serde_json::from_str::<TranslocAgencies>(&agenciesjson).unwrap();
+    let agencies:TranslocAgencies = serde_json::from_str(&agenciesjson).unwrap();
+
+    let gtfs_agencies = agencies.data.iter().map(|agency| {
+        gtfs_structures::Agency {
+            id: Some(agency.agency_id.clone()),
+            name: agency.name.clone(),
+            url: agency.url.clone(),
+            timezone: agency.timezone.clone(),
+            lang: Some(agency.language.clone()),
+            phone: agency.phone.clone(),
+            fare_url: None,
+            email: None,
+        }
+    }).collect::<Vec<gtfs_structures::Agency>>();
+
+    println!("gtfs_agencies: {:?}", gtfs_agencies);
+
+    let mut wtr = Writer::from_writer(vec![]);
+    for agency in gtfs_agencies {
+        wtr.serialize(agency).unwrap();
+    }
+
+    let gtfs_agencies_csv = String::from_utf8(wtr.into_inner().unwrap()).unwrap();
+
+    println!("gtfs_agencies_csv: {:?}", gtfs_agencies_csv);
+
+    let mut file = File::create("anteater_gtfs/agencies.txt").unwrap();
+    file.write_all(gtfs_agencies_csv.as_bytes()).unwrap();
+
+    //time to decompile the segments :-(
+
+    let segmentsjson = fs::read_to_string("staticfiles/segments.json").expect("Unable to read file");
+
+    let segments:TranslocSegments = serde_json::from_str(&segmentsjson).unwrap();
+
+    let  routesjson = fs::read_to_string("staticfiles/routes.json").expect("Unable to read file");
+
+    let routes:TranslocRoutes = serde_json::from_str(&routesjson).unwrap();
+
+    let stopsjson = fs::read_to_string("staticfiles/stops.json").expect("Unable to read file");
+
+    let stops:TranslocStops = serde_json::from_str(&stopsjson).unwrap();
+
+    let mut segments_map:HashMap<String, LineString<f64>> = HashMap::new();
+
+    for (segment_id, segment_data) in segments.data.iter() {
+        //println!("{}, {}",segment_id, segment_data)
+
+        let segment_polyline = polyline::decode_polyline(segment_data, 5).unwrap();
+
+        segments_map.insert(segment_id.clone(), segment_polyline);
+    }
+
+    println!("segments_map: {:?}", segments_map);
+
+    let mut shapeswriter = Writer::from_writer(vec![]);
+
+    for (agency_id, routes_array) in routes.data.iter() {
+        for route in routes_array {
+            println!("Route: {:?}", route);
+
+            let mut bigstackofpoints:LineString<f64> = LineString(vec![]);
+
+        for segment_part in &route.segments {
+            let segment_id = segment_part[0].clone();
+            //can be "forward" or "backward"
+            let segment_direction = segment_part[1].clone();
+
+            let mut segment = segments_map.get(&segment_id).unwrap().clone().into_inner();
+
+            if segment_direction == "backward" {
+                segment.reverse();
+            }
+
+            bigstackofpoints = bigstackofpoints.into_iter().chain(segment.into_iter()).collect::<LineString<f64>>();
+        }
+
+        //now they have to be seperated and put into the shapes list
+
+        let this_routes_shape_id = format!("{}shape",route.route_id);
+
+        let mut seqcount = 0;
+
+        for point in bigstackofpoints.into_iter() {
+            shapeswriter.serialize(gtfs_structures::Shape {
+                id: this_routes_shape_id.clone(),
+                latitude: point.y,
+                longitude: point.x,
+                sequence: seqcount,
+                dist_traveled: None,
+            }).unwrap();
+
+            seqcount = seqcount + 1;
+        }
+
+        
+        }
+
+
+        
+    }
+
+    let shapes_csv = String::from_utf8(shapeswriter.into_inner().unwrap()).unwrap();
+    let mut shapesfile = File::create("anteater_gtfs/shapes.txt").unwrap();
+
+    shapesfile.write_all(shapes_csv.as_bytes()).unwrap();
 }
