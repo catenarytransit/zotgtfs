@@ -100,5 +100,6 @@ struct TranslocStops {
 
 #[tokio::main]
 async fn main() {
-   
+    let agenciesjson = fs::read_to_string("staticfiles/agencies.json").expect("Unable to read file");
+    let agencies = serde_json::from_str::<TranslocAgencies>(&agenciesjson).unwrap();
 }
