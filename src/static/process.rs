@@ -104,6 +104,21 @@ struct TranslocStops {
     generated_on: String,
 }
 
+fn hextorgb(x:String) -> rgb::RGB<u8> {
+    let numberarray: Vec<char> = x.chars().collect();
+
+    let mut rgbarray = vec![];
+
+    for i in 0..3 {
+        let mut hex = numberarray[i*2].to_string();
+        hex.push_str(numberarray[i*2+1].to_string().as_str());
+
+        rgbarray.push(u8::from_str_radix(&hex, 16).unwrap());
+    }
+
+    return rgb::RGB8 {r: rgbarray[0], g:rgbarray[1], b:rgbarray[2]};
+}
+
 #[tokio::main]
 async fn main() {
     let agenciesjson = fs::read_to_string("staticfiles/agencies.json").expect("Unable to read file");
@@ -193,9 +208,26 @@ async fn main() {
 
     let mut shapeswriter = Writer::from_writer(vec![]);
 
+    let mut routeswriter = Writer::from_writer(vec![]);
+
     for (agency_id, routes_array) in routes.data.iter() {
         for route in routes_array {
             println!("Route: {:?}", route);
+
+            routeswriter.serialize(gtfs_structures::Route {
+                id: route.route_id.clone(),
+                agency_id: Some(String::from(agency_id)),
+                short_name: route.short_name.clone(),
+                long_name: route.long_name.clone(),
+                desc: Some(route.description.clone()),
+                route_type: gtfs_structures::RouteType::Bus,
+                url: Some(route.url.clone()),
+                color: hextorgb(route.color.clone()),
+                text_color: hextorgb(route.text_color.clone()),
+                order: None,
+                continuous_pickup: gtfs_structures::ContinuousPickupDropOff::NotAvailable,
+                continuous_drop_off: gtfs_structures::ContinuousPickupDropOff::NotAvailable,
+            }).unwrap();
 
             let mut bigstackofpoints:LineString<f64> = LineString(vec![]);
 
@@ -242,4 +274,9 @@ async fn main() {
     let mut shapesfile = File::create("anteater_gtfs/shapes.txt").unwrap();
 
     shapesfile.write_all(shapes_csv.as_bytes()).unwrap();
+
+    let routes_csv = String::from_utf8(routeswriter.into_inner().unwrap()).unwrap();
+    let mut routesfile = File::create("anteater_gtfs/routes.txt").unwrap();
+
+    routesfile.write_all(routes_csv.as_bytes()).unwrap();
 }

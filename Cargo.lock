@@ -1675,6 +1675,7 @@ dependencies = [
  "gtfs-structures",
  "polyline",
  "reqwest",
+ "rgb",
  "serde",
  "serde_json",
  "tokio",
