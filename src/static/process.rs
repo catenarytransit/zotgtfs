@@ -11,6 +11,29 @@ use gtfs_structures;
 use geo_types::geometry::LineString;
 
 #[derive(Deserialize, Debug, Serialize)]
+struct ScheduleManualInput {
+    name: String,
+    routeorder: Vec<String>,
+    components: ScheduleManualComponents,
+    timed: Vec<String>
+}
+
+#[derive(Deserialize, Debug, Serialize)]
+struct ScheduleManualComponents {
+    initials: Vec<ManualInitTime>,
+    firsttrip: String,
+    cutoff: String,
+    friday: bool,
+    interval: i32
+}
+
+#[derive(Deserialize, Debug, Serialize)]
+struct ManualInitTime {
+    code: String,
+    time: String
+}
+
+#[derive(Deserialize, Debug, Serialize)]
 struct TranslocAgencies {
     rate_limit: f32,
     expires_in: f32,
@@ -121,6 +144,10 @@ fn hextorgb(x:String) -> rgb::RGB<u8> {
 
 #[tokio::main]
 async fn main() {
+
+    //let manualschedule: ScheduleManualInput =  serde_json::from_str(fs::read_to_string("schedule.json").unwrap().as_str()).unwrap();
+
+
     let agenciesjson = fs::read_to_string("staticfiles/agencies.json").expect("Unable to read file");
     let agencies:TranslocAgencies = serde_json::from_str(&agenciesjson).unwrap();
 
