@@ -19,21 +19,6 @@ struct ScheduleManualInput {
 }
 
 #[derive(Deserialize, Debug, Serialize)]
-struct ScheduleManualComponents {
-    initials: Vec<ManualInitTime>,
-    firsttrip: String,
-    cutoff: String,
-    friday: bool,
-    interval: i32
-}
-
-#[derive(Deserialize, Debug, Serialize)]
-struct ManualInitTime {
-    code: String,
-    time: String
-}
-
-#[derive(Deserialize, Debug, Serialize)]
 struct TranslocAgencies {
     rate_limit: f32,
     expires_in: f32,
@@ -196,8 +181,29 @@ async fn main() {
 
         let mut stopswriter = Writer::from_writer(vec![]);
 
+        let stopshashmap:HashMap<String, gtfs_structures::Stop> = HashMap::new();
+
         //STOPS
         for stop in stops.data.iter() {
+            stopshashmap.insert(stop.stop_id.clone(),gtfs_structures::Stop {
+                id: stop.stop_id.clone(),
+                code: Some(stop.code.clone()),
+                name: stop.name.clone(),
+                description: stop.description.clone(),
+                location_type: gtfs_structures::LocationType::StopPoint,
+                parent_station: None,
+                zone_id: None,
+                url: None,
+                timezone: Some(String::from("America/Los_Angeles")),
+                latitude: Some(stop.location.lat.into()),
+                longitude: Some(stop.location.lng.into()),
+                wheelchair_boarding: gtfs_structures::Availability::Available,
+                level_id: None,
+                platform_code: None,
+                transfers: vec![],
+                pathways: vec![]
+            });
+
             stopswriter.serialize(gtfs_structures::Stop {
                 id: stop.stop_id.clone(),
                 code: Some(stop.code.clone()),
