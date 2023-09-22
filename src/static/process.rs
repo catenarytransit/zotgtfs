@@ -14,23 +14,15 @@ use geo_types::geometry::LineString;
 struct ScheduleManualInput {
     name: String,
     routeorder: Vec<String>,
-    components: ScheduleManualComponents,
-    timed: Vec<String>
+    timed: Vec<String>,
+    files: Vec<ScheduleFiles>,
 }
 
-#[derive(Deserialize, Debug, Serialize)]
-struct ScheduleManualComponents {
-    initials: Vec<ManualInitTime>,
-    firsttrip: String,
-    cutoff: String,
-    friday: bool,
-    interval: i32
-}
-
-#[derive(Deserialize, Debug, Serialize)]
-struct ManualInitTime {
-    code: String,
-    time: String
+#[derive(Deserialize,Debug, Serialize)]
+struct ScheduleFiles {
+    name: String,
+    //true if monday-thursday, false if friday only
+    monthurs: bool,
 }
 
 #[derive(Deserialize, Debug, Serialize)]
@@ -145,8 +137,11 @@ fn hextorgb(x:String) -> rgb::RGB<u8> {
 #[tokio::main]
 async fn main() {
 
-    //let manualschedule: ScheduleManualInput =  serde_json::from_str(fs::read_to_string("schedule.json").unwrap().as_str()).unwrap();
+    let manualschedule: Vec<ScheduleManualInput> = serde_json::from_str(fs::read_to_string("route-sup.json").unwrap().as_str()).unwrap();
 
+    println!("{:?}", &manualschedule);
+
+    let manualhashmap:HashMap<String,ScheduleManualInput> = HashMap::from_iter(manualschedule.into_iter().map(|x| (x.name.clone(), x)));
 
     let agenciesjson = fs::read_to_string("staticfiles/agencies.json").expect("Unable to read file");
     let agencies:TranslocAgencies = serde_json::from_str(&agenciesjson).unwrap();
@@ -240,6 +235,9 @@ async fn main() {
     for (agency_id, routes_array) in routes.data.iter() {
         for route in routes_array {
            // println!("Route: {:?}", route);
+
+           let mut vec_of_trips:Vec<gtfs_structures::RawTrip> = vec![];
+           let mut vec_of_stop_times:Vec<gtfs_structures::RawStopTime> = vec![];
 
             routeswriter.serialize(gtfs_structures::Route {
                 id: route.route_id.clone(),
