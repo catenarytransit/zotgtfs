@@ -191,8 +191,29 @@ async fn main() {
 
         let mut stopswriter = Writer::from_writer(vec![]);
 
+        let stopshashmap:HashMap<String, gtfs_structures::Stop> = HashMap::new();
+
         //STOPS
         for stop in stops.data.iter() {
+            stopshashmap.insert(stop.stop_id.clone(),gtfs_structures::Stop {
+                id: stop.stop_id.clone(),
+                code: Some(stop.code.clone()),
+                name: stop.name.clone(),
+                description: stop.description.clone(),
+                location_type: gtfs_structures::LocationType::StopPoint,
+                parent_station: None,
+                zone_id: None,
+                url: None,
+                timezone: Some(String::from("America/Los_Angeles")),
+                latitude: Some(stop.location.lat.into()),
+                longitude: Some(stop.location.lng.into()),
+                wheelchair_boarding: gtfs_structures::Availability::Available,
+                level_id: None,
+                platform_code: None,
+                transfers: vec![],
+                pathways: vec![]
+            });
+
             stopswriter.serialize(gtfs_structures::Stop {
                 id: stop.stop_id.clone(),
                 code: Some(stop.code.clone()),
