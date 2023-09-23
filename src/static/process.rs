@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::fs::File;
 use std::io::Write;
-
+use geo::GeodesicLength;
 mod timeutil;
 use timeutil::string_h_m_to_u32;
 
@@ -19,6 +19,12 @@ struct ScheduleManualInput {
     routeorder: Vec<String>,
     timed: Vec<String>,
     files: Vec<ScheduleFiles>,
+}
+
+#[derive(Copy, Clone)]
+struct ComparisonOfSegments {
+    distance: f64,
+    index: usize
 }
 
 #[derive(Deserialize, Debug, Serialize)]
@@ -121,6 +127,13 @@ struct TranslocStops {
     api_latest_version: String,
     generated_on: String,
 }
+
+#[derive(Debug, Clone)]
+            struct Segmentinfo {
+                segment_id: String,
+                data: Vec<geo_types::geometry::Coord>,
+                length: f64
+            }
 
 fn hextorgb(x: String) -> rgb::RGB<u8> {
     let numberarray: Vec<char> = x.chars().collect();
@@ -311,6 +324,11 @@ async fn main() {
 
             let mut bigstackofpoints: LineString<f64> = LineString(vec![]);
 
+            
+
+                let mut arrayofsegments: Vec<Segmentinfo> = vec![];
+
+        
             for segment_part in &route.segments {
                 let segment_id = segment_part[0].clone();
                 //can be "forward" or "backward"
@@ -319,14 +337,114 @@ async fn main() {
                 let mut segment = segments_map.get(&segment_id).unwrap().clone().into_inner();
 
                 if segment_direction == "backward" {
+                    println!("reversing segment {} of route {}", segment_id, route.route_id);
                     segment.reverse();
                 }
-
+                
+                let dataofthisseg = segment.clone().into_iter().collect::<Vec<geo_types::geometry::Coord>>();
+                //Lazy o(n^2) algo
+                arrayofsegments.push(Segmentinfo {
+                    segment_id: segment_id.clone(),
+                    data: dataofthisseg.clone(),
+                    length: geo::geometry::LineString::from_iter(
+                        dataofthisseg.iter().map(|x| geo::geometry::Point::new(x.x, x.y))
+                    )
+                        .geodesic_length()
+                });
+              //old part
                 bigstackofpoints = bigstackofpoints
                     .into_iter()
                     .chain(segment.into_iter())
                     .collect::<LineString<f64>>();
+                 
             }
+
+               //sort array
+               arrayofsegments.sort_by(|a, b| bool::cmp(&(a.length < b.length), &(b.length < a.length)));
+                
+               println!("segments {:?}", arrayofsegments.iter().map(|x| x.length).collect::<Vec<f64>>());
+
+               let mut segmentordered:LineString<f64> = LineString(vec![]);
+
+               segmentordered = segmentordered.into_iter().chain(arrayofsegments[0].data.clone().into_iter()).collect::<LineString<f64>>();
+
+               println!("segmentordered {:?}", segmentordered);
+
+                  arrayofsegments.remove(0);
+
+               while arrayofsegments.len() > 0 {
+                   if arrayofsegments.len() == 0 {
+
+                      
+                   } else {
+                        let mut closest_end_to_my_start: Option<ComparisonOfSegments> = None;
+                        let mut closest_start_to_my_end: Option<ComparisonOfSegments> = None;
+
+                        let coordsofmyself:Vec<geo_types::Coord> = segmentordered.clone().into_iter().map(|coord| coord).collect::<Vec<geo_types::Coord>>();
+
+                        let my_start = coordsofmyself[0].clone();
+                        let my_end = segmentordered[coordsofmyself.len() - 1].clone();
+
+                    
+                       // println!("my start {:?}", my_start);
+
+                        for (index, segment) in arrayofsegments.iter().enumerate() {
+                            let start_partner = segment.data[0].clone();
+                            let end_partner = segment.data[segment.data.len() - 1].clone();
+
+                            //println!("their end {:?}", end_partner);
+                            let my_start_to_their_end_distance = vincenty_core::distance_from_coords(
+                                &my_start,
+                                &end_partner
+                            ).unwrap();
+
+                            let my_end_to_their_start_distance = vincenty_core::distance_from_coords(
+                                &my_end,
+                                &start_partner
+                            ).unwrap();
+
+                            if (closest_end_to_my_start.is_none() || my_start_to_their_end_distance < closest_end_to_my_start.unwrap().distance) {
+                                closest_end_to_my_start = Some(ComparisonOfSegments {
+                                    distance: my_start_to_their_end_distance,
+                                    index: index
+                                });
+                            }
+
+                            if (closest_start_to_my_end.is_none() || my_end_to_their_start_distance < closest_start_to_my_end.unwrap().distance) {
+                                closest_start_to_my_end = Some(ComparisonOfSegments {
+                                    distance: my_end_to_their_start_distance,
+                                    index: index
+                                });
+                            }
+
+                            
+                        }
+
+                        let mut index_to_remove :Option<usize> = None;
+
+                            if closest_end_to_my_start.unwrap().distance < closest_start_to_my_end.unwrap().distance {
+                                //join partner + me
+                                segmentordered = arrayofsegments[closest_end_to_my_start.unwrap().index].data.clone().into_iter().chain(segmentordered.into_iter()).collect::<LineString<f64>>();
+
+                                //drop the segment
+                               index_to_remove = Some(closest_end_to_my_start.unwrap().index);
+                            } else {
+                                //join me + partner
+
+                                segmentordered = segmentordered.into_iter().chain(arrayofsegments[closest_start_to_my_end.unwrap().index].data.clone().into_iter()).collect::<LineString<f64>>();
+
+                                //drop the segment
+                                index_to_remove = Some(closest_start_to_my_end.unwrap().index);
+                            }
+
+                            if index_to_remove.is_some() {
+                                arrayofsegments.remove(index_to_remove.unwrap());
+                            }
+                   }
+               }
+
+            
+
 
             //now they have to be seperated and put into the shapes list
 
@@ -682,3 +800,6 @@ fn cleanupstring(x: String) -> String {
     return x.replace("!","").replace("#", "")
     .replace("*","").replace("$", "").replace(" ", "");
 }
+
+
+
