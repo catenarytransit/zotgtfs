@@ -368,10 +368,7 @@ async fn main() {
                   arrayofsegments.remove(0);
 
                while arrayofsegments.len() > 0 {
-                   if arrayofsegments.len() == 0 {
-
-                      
-                   } else {
+                   
                         let mut closest_end_to_my_start: Option<ComparisonOfSegments> = None;
                         let mut closest_start_to_my_end: Option<ComparisonOfSegments> = None;
 
@@ -435,7 +432,7 @@ async fn main() {
                             if index_to_remove.is_some() {
                                 arrayofsegments.remove(index_to_remove.unwrap());
                             }
-                   }
+                   
                }
 
             

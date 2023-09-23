@@ -1,2 +1,2 @@
 cd anteater_gtfs/
-zip -r ../anteater_gtfs.zip *
+zip -r ../f-anteaterexpress.zip *
