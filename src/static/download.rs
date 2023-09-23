@@ -5,7 +5,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::Write;
 
-
 async fn makereqandsave(url: &str, filename: &str, client: &ReqwestClient) {
     let mut req = client.get(url);
     req = req.header("X-RapidAPI-Host", "transloc-api-1-2.p.rapidapi.com");
@@ -47,7 +46,8 @@ async fn main() {
         "https://transloc-api-1-2.p.rapidapi.com/stops.json?agencies=1039",
         "staticfiles/stops.json",
         &client,
-    ).await;
+    )
+    .await;
 
     //get segments
     //https://transloc-api-1-2.p.rapidapi.com/segments.json?agencies=1039&callback=call
@@ -56,7 +56,8 @@ async fn main() {
         "https://transloc-api-1-2.p.rapidapi.com/segments.json?agencies=1039",
         "staticfiles/segments.json",
         &client,
-    ).await;
+    )
+    .await;
 
     //get routes
     //https://transloc-api-1-2.p.rapidapi.com/routes.json?agencies=1039
@@ -65,7 +66,8 @@ async fn main() {
         "https://transloc-api-1-2.p.rapidapi.com/routes.json?agencies=1039",
         "staticfiles/routes.json",
         &client,
-    ).await;
+    )
+    .await;
 
     //get agency info
     //https://transloc-api-1-2.p.rapidapi.com/agencies.json?agencies=1039
@@ -74,5 +76,6 @@ async fn main() {
         "https://transloc-api-1-2.p.rapidapi.com/agencies.json?agencies=1039",
         "staticfiles/agencies.json",
         &client,
-    ).await;
+    )
+    .await;
 }
