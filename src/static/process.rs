@@ -35,7 +35,7 @@ struct TranslocAgencies {
     api_version: String,
 }
 
-#[derive(Deserialize, Debug, Serialize)]
+#[derive(Deserialize, Debug, Serialize, Clone)]
 struct TranslocPos {
     lat: f32,
     lng: f32,
@@ -94,7 +94,7 @@ struct TranslocRoutes {
     generated_on: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 struct TranslocStop {
     code: String,
     description: String,
@@ -191,29 +191,29 @@ async fn main() {
 
         let mut stopswriter = Writer::from_writer(vec![]);
 
-        let stopshashmap:HashMap<String, gtfs_structures::Stop> = HashMap::new();
+        let stopshashmap:HashMap<String, gtfs_structures::Stop> = HashMap::from_iter(stops.data.clone().into_iter().map(|stop:TranslocStop| (stop.stop_id.clone(), 
+        gtfs_structures::Stop {
+            id: stop.stop_id.clone(),
+            code: Some(stop.code.clone()),
+            name: stop.name.clone(),
+            description: stop.description.clone(),
+            location_type: gtfs_structures::LocationType::StopPoint,
+            parent_station: None,
+            zone_id: None,
+            url: None,
+            timezone: Some(String::from("America/Los_Angeles")),
+            latitude: Some(stop.location.lat.into()),
+            longitude: Some(stop.location.lng.into()),
+            wheelchair_boarding: gtfs_structures::Availability::Available,
+            level_id: None,
+            platform_code: None,
+            transfers: vec![],
+            pathways: vec![]
+        }
+    )));
 
         //STOPS
         for stop in stops.data.iter() {
-            stopshashmap.insert(stop.stop_id.clone(),gtfs_structures::Stop {
-                id: stop.stop_id.clone(),
-                code: Some(stop.code.clone()),
-                name: stop.name.clone(),
-                description: stop.description.clone(),
-                location_type: gtfs_structures::LocationType::StopPoint,
-                parent_station: None,
-                zone_id: None,
-                url: None,
-                timezone: Some(String::from("America/Los_Angeles")),
-                latitude: Some(stop.location.lat.into()),
-                longitude: Some(stop.location.lng.into()),
-                wheelchair_boarding: gtfs_structures::Availability::Available,
-                level_id: None,
-                platform_code: None,
-                transfers: vec![],
-                pathways: vec![]
-            });
-
             stopswriter.serialize(gtfs_structures::Stop {
                 id: stop.stop_id.clone(),
                 code: Some(stop.code.clone()),
