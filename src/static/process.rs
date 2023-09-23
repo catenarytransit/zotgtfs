@@ -10,6 +10,9 @@ use std::fs;
 use std::fs::File;
 use std::io::Write;
 
+mod timeutil;
+use timeutil::string_h_m_to_u32;
+
 #[derive(Deserialize, Debug, Serialize)]
 struct ScheduleManualInput {
     name: String,
@@ -208,6 +211,9 @@ async fn main() {
 
     let mut stopswriter = Writer::from_writer(vec![]);
 
+    let mut stoptimeswriter = Writer::from_writer(vec![]);
+    let mut tripswriter = Writer::from_writer(vec![]);
+
     let stopshashmap: HashMap<String, gtfs_structures::Stop> =
         HashMap::from_iter(stops.data.clone().into_iter().map(|stop: TranslocStop| {
             (
@@ -379,13 +385,14 @@ async fn main() {
                         arrivals: Option<u32>,
                         departures: Option<u32>,
                         enabled: bool,
+                        boardingsallowed: bool
                     }
 
                     let mut tripnumber = 1;
 
                     //for each row
                     for row in vecofrows {
-                        let mut rowvec: Vec<Stoptimepre> = vec![];
+                        
 
                         let mut scheduleforthistime: Vec<String> = vec![];
 
@@ -428,10 +435,148 @@ async fn main() {
                                 departures: None,
                                 enabled: true,
                             }); */
-                            for routelooppoint in data_to_use.routeorder.iter() {
-                        }
 
-                        tripnumber = tripnumber + 1;
+                            let firsttimedindex = scheduleforthistime.iter().position(|x| x.contains(":")).unwrap();
+                            let initialtime = string_h_m_to_u32(scheduleforthistime[firsttimedindex].clone());
+                            let mut offset = 0;
+
+                           for eachtrip in 0..repeatnumberoftimes {
+                            //inclusive, cancel everything from 0 until
+                            let mut cancelindexpre: Option<usize> = None;
+                            let mut canceldeparturesindex:Option<usize> = None;
+
+                            let mut rowvec: Vec<Stoptimepre> = vec![];
+                            //process each stop along this trip
+                            let whichintervaltouse = repeatinterval[eachtrip as usize % repeatinterval.len() as usize];
+
+                            let mut stopnumber = 0;
+                            for routelooppoint in data_to_use.routeorder.iter() {
+                                rowvec.push(Stoptimepre {
+                                    stop_id: stopcode_to_stopid
+                                        .get(&routelooppoint.clone())
+                                        .unwrap()
+                                        .clone(),
+                                    stop_code: routelooppoint.clone(),
+                                    timed: data_to_use.timed.contains(&routelooppoint.clone()),
+                                    arrivals: None,
+                                    departures: None,
+                                    enabled: true,
+                                    boardingsallowed: true
+                                });
+
+                                //use scheduleforthistime to get the initial times
+                                let mut departuretime = None;
+
+                                if headervec.contains(&routelooppoint.clone()) {
+                                    let index = headervec.iter().position(|r| r.as_str() == routelooppoint.clone().as_str()).unwrap();
+
+                                    let stringofdeparturetime = scheduleforthistime[index].clone();
+
+                                    if cleanupstring(stringofdeparturetime.clone()).as_str() == "" {
+                                        departuretime = None;
+                                    } else {
+                                        if stringofdeparturetime.contains(":") {
+                                            departuretime = Some(string_h_m_to_u32(
+                                                stringofdeparturetime.clone(),
+                                            ) + offset);
+                                        }
+                                    }
+
+                                    if stringofdeparturetime.contains("*") {
+                                        cancelindexpre = Some(stopnumber - 1);
+                                        println!("Cancelled all service 0 to {}", cancelindexpre.unwrap())
+                                    }
+
+                                    if stringofdeparturetime.contains("$") {
+                                        canceldeparturesindex = Some(stopnumber + 1);
+
+                                        println!("Cancelled all boardings with at least {} stopnumber on line {} at time {}:{}", canceldeparturesindex.unwrap(), route.short_name, 
+                                    
+                                        (initialtime + offset) / 3600, ((initialtime + offset )% 3600) / 60
+                                    )
+                                    }
+                                }
+
+                                //cleanup the loop point by disabling it
+                                if cancelindexpre.is_some() {
+                                    if stopnumber <= cancelindexpre.unwrap() {
+                                        rowvec[stopnumber].enabled = false;
+                                    }
+                                }
+
+                                if canceldeparturesindex.is_some() {
+                                    if stopnumber >= canceldeparturesindex.unwrap() {
+                                        rowvec[stopnumber].boardingsallowed = false;
+                                    }
+                                }
+
+                                rowvec[stopnumber].departures = departuretime;
+
+                          
+
+                                stopnumber = stopnumber + 1;
+                            }
+                           
+                            offset = offset + whichintervaltouse as u32;
+                            tripnumber = tripnumber + 1;
+
+                            //write the data to the csv
+
+                            let  trip_id = format!("{}-{}", route.route_id, tripnumber);
+
+                            //get monthurs
+
+                            let schedulename = match file.monthurs {
+                                true => "monthurs",
+                                false => "fri",
+                            };
+
+                            let rawtripgtfs = gtfs_structures::RawTrip {
+                                id: trip_id.clone(),
+                                service_id: schedulename.to_string(),
+                                route_id: route.route_id.clone(),
+                                direction_id: Some(gtfs_structures::DirectionType::Outbound),
+                                block_id: None,
+                                trip_headsign: None,
+                                trip_short_name: None,
+                                shape_id: Some(this_routes_shape_id.clone()),
+                                bikes_allowed: gtfs_structures::BikesAllowedType::AtLeastOneBike,
+                                wheelchair_accessible: gtfs_structures::Availability::Available
+                            };
+
+                            tripswriter.serialize(rawtripgtfs).unwrap();
+
+                            let mut stopcounterfinal = 0;
+                            for stoptimefinal in rowvec.iter() {
+                                if stoptimefinal.enabled {
+                                    let rawstoptimegtfs = gtfs_structures::RawStopTime {
+                                        trip_id: trip_id.clone(),
+                                        arrival_time: stoptimefinal.arrivals,
+                                        departure_time: stoptimefinal.departures,
+                                        stop_id: stoptimefinal.stop_id.clone(),
+                                        stop_sequence: stopcounterfinal,
+                                        stop_headsign: None,
+                                        pickup_type: match stoptimefinal.boardingsallowed {
+                                            true => gtfs_structures::PickupDropOffType::Regular,
+                                            false => gtfs_structures::PickupDropOffType::NotAvailable,
+                                        },
+                                        drop_off_type: gtfs_structures::PickupDropOffType::Regular,
+                                        shape_dist_traveled: None,
+                                        timepoint: match stoptimefinal.timed {
+                                            true => gtfs_structures::TimepointType::Exact,
+                                            false => gtfs_structures::TimepointType::Approximate,
+                                        },
+                                        continuous_pickup: gtfs_structures::ContinuousPickupDropOff::NotAvailable,
+                                        continuous_drop_off: gtfs_structures::ContinuousPickupDropOff::NotAvailable,
+                                    };
+
+                                    stoptimeswriter.serialize(rawstoptimegtfs).unwrap();
+                                    
+                                stopcounterfinal = stopcounterfinal + 1;
+                                }
+
+                            }
+                           }
                     }
                 }
             }
@@ -447,4 +592,79 @@ async fn main() {
     let mut routesfile = File::create("anteater_gtfs/routes.txt").unwrap();
 
     routesfile.write_all(routes_csv.as_bytes()).unwrap();
+
+    let trips_csv = String::from_utf8(tripswriter.into_inner().unwrap()).unwrap();
+    let mut tripsfile = File::create("anteater_gtfs/trips.txt").unwrap();
+
+    tripsfile.write_all(trips_csv.as_bytes()).unwrap();
+
+    let stoptimes_csv = String::from_utf8(stoptimeswriter.into_inner().unwrap()).unwrap();
+    let mut stoptimesfile = File::create("anteater_gtfs/stop_times.txt").unwrap();
+
+    stoptimesfile.write_all(stoptimes_csv.as_bytes()).unwrap();
+
+    let mut calendarwriter = Writer::from_writer(vec![]);
+
+    calendarwriter.serialize(gtfs_structures::Calendar {
+        id: String::from("monthurs"),
+        monday: true,
+        tuesday: true,
+        wednesday: true,
+        thursday: true,
+        friday: true,
+        saturday: true,
+        sunday: true,
+        start_date:  chrono::naive::NaiveDate::from_ymd_opt(2023,09,25).unwrap(),
+        end_date: chrono::naive::NaiveDate::from_ymd_opt(2023,12,15).unwrap(),
+    }).unwrap();
+
+    calendarwriter.serialize(gtfs_structures::Calendar {
+        id: String::from("fri"),
+        monday: false,
+        tuesday: false,
+        wednesday: false,
+        thursday: false,
+        friday: true,
+        saturday: false,
+        sunday: false,
+        start_date:  chrono::naive::NaiveDate::from_ymd_opt(2023,09,25).unwrap(),
+        end_date: chrono::naive::NaiveDate::from_ymd_opt(2023,12,15).unwrap(),
+    }).unwrap();
+
+    let calendar_csv = String::from_utf8(calendarwriter.into_inner().unwrap()).unwrap();
+    let mut calendarfile = File::create("anteater_gtfs/calendar.txt").unwrap();
+
+    calendarfile.write_all(calendar_csv.as_bytes()).unwrap();
+
+    let mut calendardateswriter = Writer::from_writer(vec![]);
+
+    calendardateswriter.serialize(gtfs_structures::CalendarDate {
+        service_id: String::from("fri"),
+        date: chrono::naive::NaiveDate::from_ymd_opt(2023,11,10).unwrap(),
+        exception_type: gtfs_structures::Exception::Deleted,
+    }).unwrap();
+
+    calendardateswriter.serialize(gtfs_structures::CalendarDate {
+        service_id: String::from("monthurs"),
+        date: chrono::naive::NaiveDate::from_ymd_opt(2023,11,23).unwrap(),
+        exception_type: gtfs_structures::Exception::Deleted,
+    }).unwrap();
+
+    calendardateswriter.serialize(gtfs_structures::CalendarDate {
+        service_id: String::from("fri"),
+        date: chrono::naive::NaiveDate::from_ymd_opt(2023,11,24).unwrap(),
+        exception_type: gtfs_structures::Exception::Deleted,
+    }).unwrap();
+
+    //write now
+
+    let calendardates_csv = String::from_utf8(calendardateswriter.into_inner().unwrap()).unwrap();
+    let mut calendardatesfile = File::create("anteater_gtfs/calendar_dates.txt").unwrap();
+
+    calendardatesfile.write_all(calendardates_csv.as_bytes()).unwrap();
+}
+
+fn cleanupstring(x: String) -> String {
+    return x.replace("!","").replace("#", "")
+    .replace("*","").replace("$", "").replace(" ", "");
 }

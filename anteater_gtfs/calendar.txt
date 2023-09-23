@@ -1,0 +1,3 @@
+service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date
+monthurs,1,1,1,1,1,1,1,20230925,20231215
+fri,0,0,0,0,1,0,0,20230925,20231215
