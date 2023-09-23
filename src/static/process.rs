@@ -322,8 +322,7 @@ async fn main() {
                 })
                 .unwrap();
 
-            let mut bigstackofpoints: LineString<f64> = LineString(vec![]);
-
+          
             
 
                 let mut arrayofsegments: Vec<Segmentinfo> = vec![];
@@ -351,11 +350,7 @@ async fn main() {
                     )
                         .geodesic_length()
                 });
-              //old part
-                bigstackofpoints = bigstackofpoints
-                    .into_iter()
-                    .chain(segment.into_iter())
-                    .collect::<LineString<f64>>();
+              
                  
             }
 
@@ -452,7 +447,7 @@ async fn main() {
 
             let mut seqcount = 0;
 
-            for point in bigstackofpoints.into_iter() {
+            for point in segmentordered.into_iter() {
                 shapeswriter
                     .serialize(gtfs_structures::Shape {
                         id: this_routes_shape_id.clone(),
