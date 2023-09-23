@@ -181,7 +181,7 @@ async fn main() {
 
     println!("gtfs_agencies_csv: {:?}", gtfs_agencies_csv);
 
-    let mut file = File::create("anteater_gtfs/agencies.txt").unwrap();
+    let mut file = File::create("anteater_gtfs/agency.txt").unwrap();
     file.write_all(gtfs_agencies_csv.as_bytes()).unwrap();
 
     //time to decompile the segments :-(
@@ -662,6 +662,20 @@ async fn main() {
     let mut calendardatesfile = File::create("anteater_gtfs/calendar_dates.txt").unwrap();
 
     calendardatesfile.write_all(calendardates_csv.as_bytes()).unwrap();
+
+    //now validate it
+
+    let gtfs = gtfs_structures::GtfsReader::default()
+   .read("anteater_gtfs");
+
+   match gtfs {
+         Ok(gtfs) => {
+              println!("Valid");
+         },
+         Err(e) => {
+              println!("error: {:?}", e);
+         }
+   }
 }
 
 fn cleanupstring(x: String) -> String {
