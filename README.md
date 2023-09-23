@@ -21,6 +21,8 @@ UC Irvine Anteater Express Agency Number: 1039
 N Line Mon-thursday unfinished
 Friday data entire data unfinished
 
+ unzip -o ../gtfs_static_zips/f-anteaterexpress.zip -d anteaterexpress/
+
 ### Schedule Parameters
 
 All fields mark departure times only
