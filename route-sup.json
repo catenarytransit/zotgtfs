@@ -16,16 +16,7 @@
                 "monthurs": true
             }
         ],
-        "extrasegments": [
-            [
-                "1307285774",
-                "forward"
-            ],
-            [
-                "1105598388",
-                "forward"
-            ]
-        ]
+        "overrideshape": "overrideshapes/H.geojson"
     },
     {
         "name": "A",
@@ -37,12 +28,7 @@
                 "monthurs": true
             }
         ],
-        "extrasegments": [
-                [
-                    "1307285774",
-                    "forward"
-                ]
-        ]
+        "overrideshape": "overrideshapes/A.geojson"
     },
     {
         "name": "E",

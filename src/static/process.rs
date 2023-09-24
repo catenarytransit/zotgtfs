@@ -416,7 +416,7 @@ async fn main() {
                         let my_start = coordsofmyself[0].clone();
                         let my_end = segmentordered[coordsofmyself.len() - 1].clone();
 
-                    
+                        
                        // println!("my start {:?}", my_start);
 
                         for (index, segment) in arrayofsegments.iter().enumerate() {
@@ -434,19 +434,20 @@ async fn main() {
                                 &start_partner
                             ).unwrap();
 
-                            if (closest_end_to_my_start.is_none() || my_start_to_their_end_distance < closest_end_to_my_start.unwrap().distance) {
-                                closest_end_to_my_start = Some(ComparisonOfSegments {
-                                    distance: my_start_to_their_end_distance,
-                                    index: index
-                                });
-                            }
-
-                            if (closest_start_to_my_end.is_none() || my_end_to_their_start_distance < closest_start_to_my_end.unwrap().distance) {
-                                closest_start_to_my_end = Some(ComparisonOfSegments {
-                                    distance: my_end_to_their_start_distance,
-                                    index: index
-                                });
-                            }
+                         
+                                if (closest_end_to_my_start.is_none() || my_start_to_their_end_distance < closest_end_to_my_start.unwrap().distance) {
+                                    closest_end_to_my_start = Some(ComparisonOfSegments {
+                                        distance: my_start_to_their_end_distance,
+                                        index: index
+                                    });
+                                }
+    
+                                if (closest_start_to_my_end.is_none() || my_end_to_their_start_distance < closest_start_to_my_end.unwrap().distance) {
+                                    closest_start_to_my_end = Some(ComparisonOfSegments {
+                                        distance: my_end_to_their_start_distance,
+                                        index: index
+                                    });
+                                }
 
                             
                         }

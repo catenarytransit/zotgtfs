@@ -21,7 +21,13 @@ UC Irvine Anteater Express Agency Number: 1039
 N Line Mon-thursday unfinished
 Friday data entire data unfinished
 
- unzip -o ../gtfs_static_zips/f-anteaterexpress.zip -d anteaterexpress/
+### Shapes fix
+
+Circular routes such as the 2023 M, E, and N lines, will parse correctly through the greedy algorithm Kyler wrote.
+
+Routes that overlap themselves or have weird sharp corners cause errors. Transloc uses the crappiest segment idea ever.
+
+In `route-sup.json`, it may be needed to override the shape.
 
 ### Schedule Parameters
 
