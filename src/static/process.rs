@@ -16,6 +16,7 @@ use timeutil::string_h_m_to_u32;
 use geojson::GeoJson;
 
 
+
 #[derive(Deserialize, Debug, Serialize)]
 struct ScheduleManualInput {
     name: String,
@@ -161,6 +162,8 @@ fn hextorgb(x: String) -> rgb::RGB<u8> {
 
 #[tokio::main]
 async fn main() {
+    let blockedfromboardings = vec!["201"];
+
     let manualschedule: Vec<ScheduleManualInput> =
         serde_json::from_str(fs::read_to_string("route-sup.json").unwrap().as_str()).unwrap();
 
@@ -631,7 +634,20 @@ async fn main() {
                             let whichintervaltouse = repeatinterval[eachtrip as usize % repeatinterval.len() as usize];
 
                             let mut stopnumber = 0;
-                            for routelooppoint in data_to_use.routeorder.iter() {
+
+                            
+
+                            for (routeordercounter, routelooppoint) in data_to_use.routeorder.iter().enumerate() {
+                                let mut calcboardingsallowed = true;
+
+                                if routeordercounter == data_to_use.routeorder.len() - 1 {
+                                    calcboardingsallowed = false;
+                                }
+
+                                if blockedfromboardings.contains(&(routelooppoint.as_str())) {
+                                    calcboardingsallowed = false;
+                                }
+
                                 rowvec.push(Stoptimepre {
                                     stop_id: stopcode_to_stopid
                                         .get(&routelooppoint.clone())
@@ -642,7 +658,7 @@ async fn main() {
                                     arrivals: None,
                                     departures: None,
                                     enabled: true,
-                                    boardingsallowed: true
+                                    boardingsallowed: calcboardingsallowed
                                 });
 
                                 //use scheduleforthistime to get the initial times

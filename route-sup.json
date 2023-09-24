@@ -14,6 +14,10 @@
             {
                 "name": "H_MonThurs.csv",
                 "monthurs": true
+            },
+            {
+                "name": "H_Friday.csv",
+                "monthurs": false
             }
         ],
         "overrideshape": "overrideshapes/H.geojson"
@@ -25,6 +29,10 @@
         "files": [
             {
                 "name": "A_MonThurs.csv",
+                "monthurs": true
+            },
+            {
+                "name": "A_Friday.csv",
                 "monthurs": true
             }
         ],
@@ -46,6 +54,10 @@
             {
                 "name": "E_MonThurs.csv",
                 "monthurs": true
+            },
+            {
+                "name": "E_Friday.csv",
+                "monthurs": false
             }
         ]
     },
@@ -57,6 +69,10 @@
             {
                 "name": "M_MonThurs.csv",
                 "monthurs": true
+            },
+            {
+                "name": "M_Friday.csv",
+                "monthurs": false
             }
         ]
     },
@@ -68,6 +84,10 @@
             {
                 "name": "N_MonThurs.csv",
                 "monthurs": true
+            },
+            {
+                "name": "M_Friday.csv",
+                "monthurs": false
             }
         ]
     }
