@@ -362,6 +362,7 @@ async fn main() {
 
                 if data_to_use.extrasegments.is_some() {
                  for x in data_to_use.extrasegments.clone().unwrap() {
+                    println!("Joining extra {:?} to route {}", x, route.route_id);
                      sourcedata.push(x.clone());
                  }
 
