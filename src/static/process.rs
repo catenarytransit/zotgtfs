@@ -19,6 +19,7 @@ struct ScheduleManualInput {
     routeorder: Vec<String>,
     timed: Vec<String>,
     files: Vec<ScheduleFiles>,
+    extrasegments: Option<Vec<Vec<String>>>,
 }
 
 #[derive(Copy, Clone)]
@@ -281,13 +282,37 @@ async fn main() {
 
     stopsfile.write_all(stops_csv.as_bytes()).unwrap();
 
+    let mut segments_polyline_debug = Writer::from_writer(vec![]);
+
+    #[derive(Serialize, Clone)]
+    struct debugpolyline {
+        lat: f64,
+        lng: f64,
+        segment_id: String,
+        number: usize,
+    }
+
     for (segment_id, segment_data) in segments.data.iter() {
         //println!("{}, {}",segment_id, segment_data)
 
         let segment_polyline = polyline::decode_polyline(segment_data, 5).unwrap();
 
-        segments_map.insert(segment_id.clone(), segment_polyline);
+        segments_map.insert(segment_id.clone(), segment_polyline.clone());
+
+       segment_polyline.coords().enumerate().for_each(|(i, coord)| 
+        segments_polyline_debug.serialize(debugpolyline {
+            lat: coord.y,
+            lng: coord.x,
+            segment_id: segment_id.clone(),
+            number: i
+        }).unwrap());
+
     }
+
+    let segments_polyline_debug_csv = String::from_utf8(segments_polyline_debug.into_inner().unwrap()).unwrap();
+    let mut segments_polyline_debug_file = File::create("segments_polyline_debug.csv").unwrap();
+
+    segments_polyline_debug_file.write_all(segments_polyline_debug_csv.as_bytes()).unwrap();
 
     println!("segments_map: {:?}", segments_map);
 
@@ -298,6 +323,12 @@ async fn main() {
     for (agency_id, routes_array) in routes.data.iter() {
         for route in routes_array {
             // println!("Route: {:?}", route);
+
+              //make the schedule here
+
+              let data_to_use = manualhashmap.get(&route.short_name).unwrap();
+
+              println!("data_to_use: {:?}", data_to_use);
 
             let mut vec_of_trips: Vec<gtfs_structures::RawTrip> = vec![];
             let mut vec_of_stop_times: Vec<gtfs_structures::RawStopTime> = vec![];
@@ -327,8 +358,17 @@ async fn main() {
 
                 let mut arrayofsegments: Vec<Segmentinfo> = vec![];
 
+                let mut sourcedata = route.segments.clone();
+
+                if data_to_use.extrasegments.is_some() {
+                 for x in data_to_use.extrasegments.clone().unwrap() {
+                     sourcedata.push(x.clone());
+                 }
+
+                   
+                }
         
-            for segment_part in &route.segments {
+            for segment_part in &sourcedata {
                 let segment_id = segment_part[0].clone();
                 //can be "forward" or "backward"
                 let segment_direction = segment_part[1].clone();
@@ -458,11 +498,7 @@ async fn main() {
                 seqcount = seqcount + 1;
             }
 
-            //make the schedule here
-
-            let data_to_use = manualhashmap.get(&route.short_name).unwrap();
-
-            println!("data_to_use: {:?}", data_to_use);
+          
 
             for file in data_to_use.files.iter() {
                 // let scheduletimes = fs::read_to_string(format!("schedules/{}", file.name).as_str()).unwrap().as_str();

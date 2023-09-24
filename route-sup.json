@@ -26,6 +26,12 @@
                 "name": "A_MonThurs.csv",
                 "monthurs": true
             }
+        ],
+        "extrasegments": [
+                [
+                    "1307285774",
+                    "backward"
+                ]
         ]
     },
     {
