@@ -511,7 +511,7 @@ async fn main() {
                 };
 
                 if linestring.is_some() {
-                    segmentordered = LineString::from(linestring.unwrap().into_iter().map(|x| geo_types::Point::new(x[0], x[1])).collect::<Vec<geo_types::Point<f64>>>>());
+                    segmentordered = LineString::from(linestring.unwrap().into_iter().map(|x| geo_types::Point::new(x[0], x[1])).collect::<Vec<geo_types::Point<f64>>>());
                 }
             }
 
