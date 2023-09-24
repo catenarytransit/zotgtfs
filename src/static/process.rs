@@ -13,6 +13,9 @@ use geo::GeodesicLength;
 mod timeutil;
 use timeutil::string_h_m_to_u32;
 
+use geojson::GeoJson;
+
+
 #[derive(Deserialize, Debug, Serialize)]
 struct ScheduleManualInput {
     name: String,
@@ -20,6 +23,7 @@ struct ScheduleManualInput {
     timed: Vec<String>,
     files: Vec<ScheduleFiles>,
     extrasegments: Option<Vec<Vec<String>>>,
+    overrideshape: Option<String>
 }
 
 #[derive(Copy, Clone)]
@@ -475,10 +479,41 @@ async fn main() {
                    
                }
 
-            
-
+               
 
             //now they have to be seperated and put into the shapes list
+
+            if data_to_use.overrideshape.is_some() {
+
+
+                let file = File::open(data_to_use.overrideshape.clone().unwrap()).unwrap();
+
+                let geojson = GeoJson::from_reader(file).unwrap();
+
+                let mut linestring = match geojson {
+                    GeoJson::FeatureCollection(feature_collection) => {
+                        let mut linestring = None;
+
+                        for feature in feature_collection.features {
+                            if let Some(geojson_geometry) = feature.geometry {
+                                match geojson_geometry.value {
+                                    geojson::Value::LineString(line_string) => {
+                                        linestring = Some(line_string);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+
+                        linestring
+                    }
+                    _ => None,
+                };
+
+                if linestring.is_some() {
+                    segmentordered = LineString::from(linestring.unwrap().into_iter().map(|x| geo_types::Point::new(x[0], x[1])).collect::<Vec<geo_types::Point<f64>>>>());
+                }
+            }
 
             let this_routes_shape_id = format!("{}shape", route.route_id);
 
