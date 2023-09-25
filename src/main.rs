@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 use protobuf::{CodedInputStream, Message as ProtobufMessage};
 use prost::Message;
+use std::time::UNIX_EPOCH;
 use gtfs_rt::EntitySelector;
 use gtfs_rt::TimeRange;
 use serde_json;
@@ -152,6 +153,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             entity: list_of_vehicle_positions,
         };
 
+       // println!("Encoded to protobuf! {:#?}", entire_feed_vehicles);
+
         //let entire_feed_vehicles = entire_feed_vehicles.encode_to_vec();
 
         let buf:Vec<u8> = entire_feed_vehicles.encode_to_vec();
@@ -163,6 +166,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 "f-anteaterexpress~rt", "vehicles"
                                             ),
                                             &buf,
+                                        )
+                                        .unwrap();
+
+                                        let _: () = con
+                                        .set(
+                                            format!(
+                                                "gtfsrttime|{}|{}",
+                                                "f-anteaterexpress~rt", "vehicles"
+                                            ),
+                                            SystemTime::now()
+                                                .duration_since(UNIX_EPOCH)
+                                                .unwrap()
+                                                .as_millis()
+                                                .to_string(),
+                                        )
+                                        .unwrap();
+
+                                        let _: () = con
+                                        .set(
+                                            format!(
+                                                "gtfsrtexists|{}",
+                                                "f-anteaterexpress~rt"
+                                            ),
+                                            SystemTime::now()
+                                                .duration_since(UNIX_EPOCH)
+                                                .unwrap()
+                                                .as_millis()
+                                                .to_string(),
                                         )
                                         .unwrap();
 
