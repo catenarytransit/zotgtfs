@@ -345,7 +345,7 @@ async fn main() {
                     id: route.route_id.clone(),
                     agency_id: Some(String::from(agency_id)),
                     short_name: route.short_name.clone(),
-                    long_name: route.long_name.clone(),
+                    long_name: format!("{} Line - Anteater Express", route.short_name.clone()),
                     desc: Some(route.description.clone()),
                     route_type: gtfs_structures::RouteType::Bus,
                     url: Some(format!(
@@ -359,9 +359,6 @@ async fn main() {
                     continuous_drop_off: gtfs_structures::ContinuousPickupDropOff::NotAvailable,
                 })
                 .unwrap();
-
-          
-            
 
                 let mut arrayofsegments: Vec<Segmentinfo> = vec![];
 

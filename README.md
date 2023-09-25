@@ -21,6 +21,8 @@ UC Irvine Anteater Express Agency Number: 1039
 N Line Mon-thursday unfinished
 Friday data entire data unfinished
 
+** DO NOT UPDATE PROST VERSION!! Not backwards compatible! **
+
 ### Shapes fix
 
 Circular routes such as the 2023 M, E, and N lines, will parse correctly through the greedy algorithm Kyler wrote.
