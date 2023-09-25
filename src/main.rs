@@ -168,7 +168,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         println!("Inserted into Redis!");
 
-        let time_left = 500 as f64 - (beginning.elapsed().as_millis() as f64);
+        let time_left = 4000 as f64 - (beginning.elapsed().as_millis() as f64);
 
         if time_left > 0.0 {
             println!("Sleeping for {} milliseconds", time_left);
