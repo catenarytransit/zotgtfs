@@ -71,8 +71,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .read("anteater_gtfs").unwrap();
 
     let client = reqwest::Client::new();
-    
-    let  mph_to_metres_per_second: f32 = 0.44704;
 
     loop {
         //every 4 seconds
@@ -102,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         longitude: bus.location.lng,
                         bearing: bus.heading,
                         odometer: None,
-                        speed: Some((bus.speed.unwrap_or(0.0) as f32 * mph_to_metres_per_second) as f32),
+                        speed: Some((bus.speed.unwrap_or(0.0) as f32 * 0.277778) as f32),
                     });
 
                     let vehicleposition = gtfs_rt::FeedEntity {
