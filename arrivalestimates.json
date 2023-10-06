@@ -1,0 +1,195 @@
+{
+    "rate_limit": 1,
+    "expires_in": 5,
+    "api_latest_version": "1.2",
+    "generated_on": "2023-09-26T05:12:42+00:00",
+    "data": [
+        {
+            "arrivals": [
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8020525",
+                    "arrival_at": "2023-09-25T22:12:39-07:00",
+                    "type": "vehicle-based"
+                },
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8021577",
+                    "arrival_at": "2023-09-25T22:13:31-07:00",
+                    "type": "vehicle-based"
+                }
+            ],
+            "agency_id": "1039",
+            "stop_id": "8197584"
+        },
+        {
+            "arrivals": [
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8020517",
+                    "arrival_at": "2023-09-25T22:22:19-07:00",
+                    "type": "vehicle-based"
+                },
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8020525",
+                    "arrival_at": "2023-09-25T22:24:18-07:00",
+                    "type": "vehicle-based"
+                },
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8021577",
+                    "arrival_at": "2023-09-25T22:26:15-07:00",
+                    "type": "vehicle-based"
+                }
+            ],
+            "agency_id": "1039",
+            "stop_id": "8197568"
+        },
+        {
+            "arrivals": [
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8020517",
+                    "arrival_at": "2023-09-25T22:21:28-07:00",
+                    "type": "vehicle-based"
+                },
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8020525",
+                    "arrival_at": "2023-09-25T22:23:27-07:00",
+                    "type": "vehicle-based"
+                },
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8021577",
+                    "arrival_at": "2023-09-25T22:25:24-07:00",
+                    "type": "vehicle-based"
+                }
+            ],
+            "agency_id": "1039",
+            "stop_id": "8197554"
+        },
+        {
+            "arrivals": [
+                {
+                    "route_id": "8006670",
+                    "vehicle_id": "8020511",
+                    "arrival_at": "2023-09-25T22:18:50-07:00",
+                    "type": "vehicle-based"
+                }
+            ],
+            "agency_id": "1039",
+            "stop_id": "8274070"
+        },
+        {
+            "arrivals": [
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8020517",
+                    "arrival_at": "2023-09-25T22:14:11-07:00",
+                    "type": "vehicle-based"
+                },
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8020525",
+                    "arrival_at": "2023-09-25T22:16:08-07:00",
+                    "type": "vehicle-based"
+                },
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8021577",
+                    "arrival_at": "2023-09-25T22:18:07-07:00",
+                    "type": "vehicle-based"
+                }
+            ],
+            "agency_id": "1039",
+            "stop_id": "8197578"
+        },
+        {
+            "arrivals": [
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8020525",
+                    "arrival_at": "2023-09-25T22:11:40-07:00",
+                    "type": "vehicle-based"
+                },
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8021577",
+                    "arrival_at": "2023-09-25T22:12:48-07:00",
+                    "type": "vehicle-based"
+                }
+            ],
+            "agency_id": "1039",
+            "stop_id": "8197582"
+        },
+        {
+            "arrivals": [
+                {
+                    "route_id": "8006670",
+                    "vehicle_id": "8020511",
+                    "arrival_at": "2023-09-25T22:17:02-07:00",
+                    "type": "vehicle-based"
+                },
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8020517",
+                    "arrival_at": "2023-09-25T22:19:46-07:00",
+                    "type": "vehicle-based"
+                },
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8020525",
+                    "arrival_at": "2023-09-25T22:21:45-07:00",
+                    "type": "vehicle-based"
+                },
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8021577",
+                    "arrival_at": "2023-09-25T22:23:43-07:00",
+                    "type": "vehicle-based"
+                }
+            ],
+            "agency_id": "1039",
+            "stop_id": "8274064"
+        },
+        {
+            "arrivals": [
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8020517",
+                    "arrival_at": "2023-09-25T22:11:38-07:00",
+                    "type": "vehicle-based"
+                },
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8020525",
+                    "arrival_at": "2023-09-25T22:13:35-07:00",
+                    "type": "vehicle-based"
+                },
+                {
+                    "route_id": "8006640",
+                    "vehicle_id": "8021577",
+                    "arrival_at": "2023-09-25T22:15:34-07:00",
+                    "type": "vehicle-based"
+                }
+            ],
+            "agency_id": "1039",
+            "stop_id": "8274068"
+        },
+        {
+            "arrivals": [
+                {
+                    "route_id": "8006670",
+                    "vehicle_id": "8020511",
+                    "arrival_at": "2023-09-25T22:12:59-07:00",
+                    "type": "vehicle-based"
+                }
+            ],
+            "agency_id": "1039",
+            "stop_id": "8274088"
+        }
+    ],
+    "api_version": "1.2"
+}
