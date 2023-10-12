@@ -100,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         longitude: bus.location.lng,
                         bearing: bus.heading,
                         odometer: None,
-                        speed: Some((bus.speed.unwrap_or(0.0) as f32 * 0.2777777778) as f32),
+                        speed: Some((bus.speed.unwrap_or(0.0) as f32 * (1.0/3.6)) as f32),
                     });
 
                     let vehicleposition = gtfs_rt::FeedEntity {
