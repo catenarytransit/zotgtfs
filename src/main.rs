@@ -108,7 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         vehicle: Some(
                             gtfs_rt::VehiclePosition {
                                 trip: Some(gtfs_rt::TripDescriptor {
-                                    trip_id: None,
+                                    trip_id: Some("GoAnteaters!".to_string()),
                                     route_id: Some(bus.route_id.as_ref().unwrap().clone()),
                                     direction_id: Some(0),
                                     start_time: None,
