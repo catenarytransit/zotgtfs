@@ -117,7 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }),
                                 vehicle: Some(gtfs_rt::VehicleDescriptor {
                                     id: Some(bus.vehicle_id.as_ref().unwrap().clone()),
-                                    label: None,
+                                    label: Some(bus.call_name.as_ref().unwrap().clone()),
                                     license_plate: None,
                                 }),
                                 position: bruhposition,
