@@ -193,6 +193,8 @@ let midnight = current_time_la.date().and_hms(0, 0, 0);
 
 let midnight_timestamp = midnight.timestamp();
 
+let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
+
         for (route_id, buses) in grouped_by_route.iter() {
             //let sort the buses by completion
 
@@ -241,17 +243,25 @@ let midnight_timestamp = midnight.timestamp();
                             //positive means the bus would get there before the scheduled time
                             //negative means that it's late, as the projected arrival time is greater than the scheduled time
 
-                           
+                            //bias algorithm towards late buses i think?
+                           let score:f64 = {
+                            if time_diff < 0 {
+                                time_diff.abs() as f64 
+                            } else {
+                                time_diff.abs() as f64
+                            }
+                        };
 
                             if time_diff.abs() < 3600 {
-                              //  println!("time diff: {}", time_diff);
+                               println!("time diff: {}", time_diff);
                                 match timedifference {
                                     Some(x) => {
                                         //if the previous trip comparison is worse
-                                        if x.abs() > time_diff.abs() {
+                                        if (x.abs() as f64) > score {
                                             timedifference = Some(time_diff);
                                             closest_past_trip = Some(possible_trips[tripcounter].id.clone());
                                             remove_before_index = Some(tripcounter);
+                                            delay_hashmap.insert(bus.vehicle_id.as_ref().unwrap().clone(), time_diff);
                                         } else {
                                             break 'search_trip_list;
                                         }
@@ -259,12 +269,13 @@ let midnight_timestamp = midnight.timestamp();
                                     None => {
                                         timedifference = Some(time_diff);
                                         closest_past_trip = Some(possible_trips[tripcounter].id.clone());
+                                        delay_hashmap.insert(bus.vehicle_id.as_ref().unwrap().clone(), time_diff);
                                     }
                                 }
                             } else {
                             }
                            } else {
-                           // println!("No trips left to search for {}", bus.vehicle_id.as_ref().unwrap().clone());
+                            println!("No trips left to search for {}", bus.vehicle_id.as_ref().unwrap().clone());
                            }
                         }
 
@@ -290,6 +301,8 @@ let midnight_timestamp = midnight.timestamp();
             println!("vehicle_id_to_trip_id: {:?}", vehicle_id_to_trip_id);
        
 
+            println!("Delay Hashmap {:#?}", delay_hashmap);
+
         import_data.data.iter().for_each(|(agency_id, buses)| {
             if agency_id.as_str() == "1039" {
                 for (i, bus) in buses.iter().enumerate() {
@@ -302,18 +315,20 @@ let midnight_timestamp = midnight.timestamp();
                         speed: Some((bus.speed.unwrap_or(0.0) as f32 * (1.0/3.6)) as f32),
                     });
 
+                    let trip_ident = gtfs_rt::TripDescriptor {
+                        trip_id: Some(vehicle_id_to_trip_id.get(bus.vehicle_id.as_ref().unwrap()).unwrap().clone()),
+                        route_id: Some(bus.route_id.as_ref().unwrap().clone()),
+                        direction_id: Some(0),
+                        start_time: None,
+                        start_date: Some(chrono::Utc::now().format("%Y%m%d").to_string()),
+                        schedule_relationship: None,
+                    };
+
                     let vehicleposition = gtfs_rt::FeedEntity {
                         id: bus.vehicle_id.as_ref().unwrap().clone(),
                         vehicle: Some(
                             gtfs_rt::VehiclePosition {
-                                trip: Some(gtfs_rt::TripDescriptor {
-                                    trip_id: Some(vehicle_id_to_trip_id.get(bus.vehicle_id.as_ref().unwrap()).unwrap().clone()),
-                                    route_id: Some(bus.route_id.as_ref().unwrap().clone()),
-                                    direction_id: Some(0),
-                                    start_time: None,
-                                    start_date: Some(chrono::Utc::now().format("%Y%m%d").to_string()),
-                                    schedule_relationship: None,
-                                }),
+                                trip: Some(trip_ident.clone()),
                                 vehicle: Some(gtfs_rt::VehicleDescriptor {
                                     id: Some(bus.vehicle_id.as_ref().unwrap().clone()),
                                     label: Some(bus.call_name.as_ref().unwrap().clone()),
@@ -332,6 +347,24 @@ let midnight_timestamp = midnight.timestamp();
                         trip_update: None,
                         alert: None
                     };
+
+
+                    let tripupdate = gtfs_rt::FeedEntity {
+                        id: bus.vehicle_id.as_ref().unwrap().clone(),
+                        vehicle: None,
+                        is_deleted: None,
+                        trip_update: Some(
+                           gtfs_rt::TripUpdate { trip: trip_ident, vehicle: 
+                            Some(gtfs_rt::VehicleDescriptor {
+                                id: Some(bus.vehicle_id.as_ref().unwrap().clone()),
+                                label: Some(bus.call_name.as_ref().unwrap().clone()),
+                                license_plate: None,
+                            })
+                            , stop_time_update: vec![], timestamp:  Some(bus.last_updated_on.parse::<chrono::DateTime<chrono::Utc>>().unwrap().timestamp() as u64), delay: delay_hashmap.get(bus.vehicle_id.as_ref().unwrap()).map(|x| *x as i32), }
+                        ),
+                        alert: None
+                    };
+
 
                     list_of_vehicle_positions.push(vehicleposition);
                 }
