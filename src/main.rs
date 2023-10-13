@@ -11,6 +11,7 @@ use chrono_tz::US::Pacific;
 use gtfs_rt::TimeRange;
 use serde_json;
 use chrono::TimeZone;
+use chrono::Timelike;
 use chrono_tz::Tz;
 use chrono_tz::UTC;
 
@@ -63,6 +64,8 @@ struct TranslocLocation {
 }
 
 fn allowtrip(trip_id: &String, trip: &gtfs_structures::Trip, route_id: &String, gtfs: &gtfs_structures::Gtfs) -> bool {
+
+
     let calendarselected = gtfs.calendar.get(trip.service_id.as_str()).unwrap();
             
     //is it friday in Los Angeles?
@@ -76,6 +79,20 @@ let tz: Tz = "America/Los_Angeles".parse().unwrap();
 let current_time_la = current_time.with_timezone(&tz);
 
 let is_friday = current_time_la.weekday() == chrono::Weekday::Fri;
+
+let current_time_in_seconds = (current_time_la.hour() * 3600) + (current_time_la.minute() * 60) + current_time_la.second();
+
+if trip.stop_times[0].departure_time.is_some() {
+    let departure_time = trip.stop_times[0].departure_time.as_ref().unwrap();
+
+    let diff = *departure_time as i32 - current_time_in_seconds as i32;
+    //large time means the trip hasn't started yet
+    //negative time means the trip has already started 
+
+    if diff > 1500 || diff < -3600 {
+        return false;
+    }
+}
 
 return match is_friday {
     true => {
@@ -96,7 +113,7 @@ fn arrival_estimates_length_to_end(bus: &EachBus) -> i32 {
                 break 'estimation;
             }
         }
-        
+
         if estimate.route_id.is_some() {
             if estimate.route_id.as_ref().unwrap().as_str() != bus.route_id.as_ref().unwrap().as_str() {
                 break 'estimation;
@@ -163,6 +180,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
 
+        
+let current_time = chrono::Utc::now();
+
+let tz: Tz = "America/Los_Angeles".parse().unwrap();
+
+// Convert this to the Los Angeles timezone.
+
+let current_time_la = current_time.with_timezone(&tz);
+
+let midnight = current_time_la.date().and_hms(0, 0, 0);
+
+let midnight_timestamp = midnight.timestamp();
+
         for (route_id, buses) in grouped_by_route.iter() {
             //let sort the buses by completion
 
@@ -170,12 +200,94 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             sorted_buses.sort_by(|bus_a, bus_b| arrival_estimates_length_to_end(bus_a).cmp(&arrival_estimates_length_to_end(bus_b)));
 
-            println!("order of completion [{}]: {:?}", route_id, sorted_buses.into_iter().map(|x| arrival_estimates_length_to_end(&x)).collect::<Vec<i32>>());
+            println!("order of completion [{}]: {:?}", route_id, &sorted_buses.iter().map(|x| arrival_estimates_length_to_end(&x)).collect::<Vec<i32>>());
             
             let mut possible_trips = gtfs.trips.iter().filter(|(trip_id,trip)| allowtrip(&trip_id, &trip, &route_id, &gtfs)).map(|(trip_id, trip)| trip).collect::<Vec<&gtfs_structures::Trip>>();
 
+            possible_trips.sort_by(|trip_a, trip_b| trip_a.id.cmp(&trip_b.id));
 
-        }
+            println!("possible trips on Route {}: {:?}",gtfs.get_route(route_id).unwrap().short_name , possible_trips.iter().map(|x| x.id.clone()).collect::<Vec<String>>());
+
+            for (i,bus) in (&sorted_buses).iter().rev().enumerate() {
+                if possible_trips.len() == 0 {
+                    vehicle_id_to_trip_id.insert(bus.vehicle_id.as_ref().unwrap().clone(), format!("extra-{}-{i}", bus.route_id.as_ref().unwrap().clone()));
+                } else {
+                    if possible_trips.len() == 1 {
+                        vehicle_id_to_trip_id.insert(bus.vehicle_id.as_ref().unwrap().clone(), possible_trips[0].id.clone());
+                    } else {
+                        let assigned_id = possible_trips[0].id.clone();
+
+                        let mut closest_past_trip: Option<String> = None;
+                        let mut remove_before_index:Option<usize> = None;
+
+                        let searchable_stop_times_from_bus = bus.arrival_estimates.iter().filter(|arrival_estimate| arrival_estimate.arrival_at.is_some() && arrival_estimate.stop_id.is_some()).collect::<Vec<&ArrivalEstimates>>();
+                    
+                        //println!("lineup {} vs {}", searchable_stop_times_from_gtfs.len(), searchable_stop_times_from_bus.len());
+
+                        let mut timedifference:Option<i32> = None;
+
+                        //search through the entire trip list
+                        'search_trip_list: for (tripcounter,lookingtrip) in possible_trips.iter().rev().enumerate() {
+                            let searchable_stop_times_from_gtfs = possible_trips[tripcounter].stop_times.iter().filter(|stop_time| stop_time.departure_time.is_some()).collect::<Vec<&gtfs_structures::StopTime>>();
+                            let searchable_stop_times_stop_ids = searchable_stop_times_from_gtfs.iter().map(|stop_time| stop_time.stop.id.clone()).collect::<Vec<String>>();
+                            
+                            let searchable_stop_times_bus_filterable = searchable_stop_times_from_bus.iter().filter(|arrival_estimate| searchable_stop_times_stop_ids.contains(arrival_estimate.stop_id.as_ref().unwrap())).collect::<Vec<&&ArrivalEstimates>>();
+                            
+                           if searchable_stop_times_bus_filterable.len() > 0 {
+                            let bus_arrival_timestamp = chrono::DateTime::parse_from_rfc3339(searchable_stop_times_bus_filterable[0].arrival_at.as_ref().unwrap()).unwrap().timestamp() - midnight_timestamp;
+
+                           // println!("{}, {}", searchable_stop_times_from_gtfs[0].departure_time.as_ref().unwrap(), bus_arrival_timestamp);
+                            let time_diff = *searchable_stop_times_from_gtfs[0].departure_time.as_ref().unwrap() as i32 - bus_arrival_timestamp as i32;
+                            //positive means the bus would get there before the scheduled time
+                            //negative means that it's late, as the projected arrival time is greater than the scheduled time
+
+                           
+
+                            if time_diff.abs() < 3600 {
+                              //  println!("time diff: {}", time_diff);
+                                match timedifference {
+                                    Some(x) => {
+                                        //if the previous trip comparison is worse
+                                        if x.abs() > time_diff.abs() {
+                                            timedifference = Some(time_diff);
+                                            closest_past_trip = Some(possible_trips[tripcounter].id.clone());
+                                            remove_before_index = Some(tripcounter);
+                                        } else {
+                                            break 'search_trip_list;
+                                        }
+                                    },
+                                    None => {
+                                        timedifference = Some(time_diff);
+                                        closest_past_trip = Some(possible_trips[tripcounter].id.clone());
+                                    }
+                                }
+                            } else {
+                            }
+                           } else {
+                           // println!("No trips left to search for {}", bus.vehicle_id.as_ref().unwrap().clone());
+                           }
+                        }
+
+                        if remove_before_index.is_some() {
+                            possible_trips.drain(0..remove_before_index.unwrap() + 1);
+                        }
+                        
+                        let closest_past_trip = match closest_past_trip {
+                            Some(x) => x,
+                            None => {
+                                String::from("GoAnteaters!")
+                            }
+                        };
+
+                        println!("Route: {}, Bus: {} assigned to {}", gtfs.get_route(route_id).unwrap().short_name, bus.call_name.as_ref().unwrap(), &closest_past_trip);
+                        vehicle_id_to_trip_id.insert(bus.vehicle_id.as_ref().unwrap().clone(), closest_past_trip);
+                    }
+                }
+            }
+
+            }
+
+            println!("vehicle_id_to_trip_id: {:?}", vehicle_id_to_trip_id);
        
 
         import_data.data.iter().for_each(|(agency_id, buses)| {
@@ -195,7 +307,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         vehicle: Some(
                             gtfs_rt::VehiclePosition {
                                 trip: Some(gtfs_rt::TripDescriptor {
-                                    trip_id: Some("GoAnteaters!".to_string()),
+                                    trip_id: Some(vehicle_id_to_trip_id.get(bus.vehicle_id.as_ref().unwrap()).unwrap().clone()),
                                     route_id: Some(bus.route_id.as_ref().unwrap().clone()),
                                     direction_id: Some(0),
                                     start_time: None,
