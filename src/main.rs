@@ -56,7 +56,23 @@ struct TranslocLocation {
     lng: f32
 }
 
+fn arrival_estimates_length_to_end(bus: &EachBus) -> i32 {
+    let mut length = 0;
 
+    for estimate in bus.arrival_estimates.iter() {
+        if estimate.stop_id.is_some() {
+            if estimate.stop_id.unwrap().as_str() == "8197566" || estimate.stop_id.unwrap().as_str() == "8274064" {
+                break;
+            }
+            }
+
+        if estimate.arrival_at.is_some() {
+            length += 1;
+        }
+    }
+
+    return length;
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -73,7 +89,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
 
     loop {
-        //every 4 seconds
 
         let mut list_of_vehicle_positions: Vec<gtfs_rt::FeedEntity> = Vec::new();
 
@@ -91,6 +106,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let import_data: TranslocRealtime = serde_json::from_str(body.as_str()).unwrap();
 
+        let mut vehicle_id_to_trip_id:HashMap<String, String> = HashMap::new();
+
+        let mut grouped_by_route: HashMap<String, Vec<EachBus>> = HashMap::new();
+
+        import_data.data.iter().for_each(|(agency_id, buses)| {
+            if agency_id.as_str() == "1039" {
+                for (i, bus) in buses.iter().enumerate() {
+                    if bus.route_id.is_some() {
+                        if grouped_by_route.contains_key(bus.route_id.as_ref().unwrap()) {
+                            grouped_by_route.get_mut(bus.route_id.as_ref().unwrap()).unwrap().push(bus.clone());
+                        } else {
+                            grouped_by_route.insert(bus.route_id.as_ref().unwrap().clone(), vec![bus.clone()]);
+                        }
+                    }
+                }
+            }
+        });
+
+        for (route_id, buses) in grouped_by_route.iter() {
+            //let sort the buses by completion
+
+            let mut sorted_buses = buses.clone();
+            
+            sorted_buses.sort_by(|bus_a, bus_b| arrival_estimates_length_to_end(bus_b).cmp(&arrival_estimates_length_to_end(bus_a)));
+
+            print!("order of completion [{}]: {:?}", route_id, sorted_buses.into_iter().map(|x| x.arrival_estimates.len()).collect::<Vec<i32>>());
+        }
+
         import_data.data.iter().for_each(|(agency_id, buses)| {
             if agency_id.as_str() == "1039" {
                 for (i, bus) in buses.iter().enumerate() {
@@ -104,7 +147,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     });
 
                     let vehicleposition = gtfs_rt::FeedEntity {
-                        id: bus.route_id.as_ref().unwrap().clone(),
+                        id: bus.vehicle_id.as_ref().unwrap().clone(),
                         vehicle: Some(
                             gtfs_rt::VehiclePosition {
                                 trip: Some(gtfs_rt::TripDescriptor {
