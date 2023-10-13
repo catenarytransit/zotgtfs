@@ -59,10 +59,10 @@ struct TranslocLocation {
 fn arrival_estimates_length_to_end(bus: &EachBus) -> i32 {
     let mut length = 0;
 
-    for estimate in bus.arrival_estimates.iter() {
+    'estimation: for estimate in bus.arrival_estimates.iter() {
         if estimate.stop_id.is_some() {
             if estimate.stop_id.as_ref().unwrap().as_str() == "8197566" || estimate.stop_id.as_ref().unwrap().as_str() == "8274064" {
-                break;
+                break 'estimation;
             }
             }
 
