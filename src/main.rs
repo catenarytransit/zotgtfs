@@ -6,8 +6,14 @@ use protobuf::{CodedInputStream, Message as ProtobufMessage};
 use prost::Message;
 use std::time::UNIX_EPOCH;
 use gtfs_rt::EntitySelector;
+use chrono::Datelike;
+use chrono_tz::US::Pacific;
 use gtfs_rt::TimeRange;
 use serde_json;
+use chrono::TimeZone;
+use chrono_tz::Tz;
+use chrono_tz::UTC;
+
 
 use redis::Commands;
 use redis::RedisError;
@@ -56,6 +62,31 @@ struct TranslocLocation {
     lng: f32
 }
 
+fn allowtrip(trip_id: &String, trip: &gtfs_structures::Trip, route_id: &String, gtfs: &gtfs_structures::Gtfs) -> bool {
+    let calendarselected = gtfs.calendar.get(trip.service_id.as_str()).unwrap();
+            
+    //is it friday in Los Angeles?
+    // Get the timezone for Los Angeles.
+let current_time = chrono::Utc::now();
+
+let tz: Tz = "America/Los_Angeles".parse().unwrap();
+
+// Convert this to the Los Angeles timezone.
+
+let current_time_la = current_time.with_timezone(&tz);
+
+let is_friday = current_time_la.weekday() == chrono::Weekday::Fri;
+
+return match is_friday {
+    true => {
+        calendarselected.friday == true && trip.route_id == *route_id
+    },
+    false => {
+        calendarselected.monday == true && trip.route_id == *route_id
+    }
+    }
+}
+
 fn arrival_estimates_length_to_end(bus: &EachBus) -> i32 {
     let mut length = 0;
 
@@ -64,7 +95,13 @@ fn arrival_estimates_length_to_end(bus: &EachBus) -> i32 {
             if estimate.stop_id.as_ref().unwrap().as_str() == "8197566" || estimate.stop_id.as_ref().unwrap().as_str() == "8274064" {
                 break 'estimation;
             }
+        }
+        
+        if estimate.route_id.is_some() {
+            if estimate.route_id.as_ref().unwrap().as_str() != bus.route_id.as_ref().unwrap().as_str() {
+                break 'estimation;
             }
+        }
 
         if estimate.arrival_at.is_some() {
             length += 1;
@@ -85,6 +122,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let gtfs = gtfs_structures::GtfsReader::default()
     .read("anteater_gtfs").unwrap();
+
+    let rawgtfs = gtfs_structures::RawGtfs::new("anteater_gtfs").unwrap();
 
     let client = reqwest::Client::new();
 
@@ -129,10 +168,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let mut sorted_buses = buses.clone();
             
-            sorted_buses.sort_by(|bus_a, bus_b| arrival_estimates_length_to_end(bus_b).cmp(&arrival_estimates_length_to_end(bus_a)));
+            sorted_buses.sort_by(|bus_a, bus_b| arrival_estimates_length_to_end(bus_a).cmp(&arrival_estimates_length_to_end(bus_b)));
 
             println!("order of completion [{}]: {:?}", route_id, sorted_buses.into_iter().map(|x| arrival_estimates_length_to_end(&x)).collect::<Vec<i32>>());
+            
+            let mut possible_trips = gtfs.trips.iter().filter(|(trip_id,trip)| allowtrip(&trip_id, &trip, &route_id, &gtfs)).map(|(trip_id, trip)| trip).collect::<Vec<&gtfs_structures::Trip>>();
+
+
         }
+       
 
         import_data.data.iter().for_each(|(agency_id, buses)| {
             if agency_id.as_str() == "1039" {
