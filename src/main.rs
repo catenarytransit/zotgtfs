@@ -131,7 +131,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             sorted_buses.sort_by(|bus_a, bus_b| arrival_estimates_length_to_end(bus_b).cmp(&arrival_estimates_length_to_end(bus_a)));
 
-            println!("order of completion [{}]: {:?}", route_id, sorted_buses.into_iter().map(|x| x.arrival_estimates.len()).collect::<Vec<usize>>());
+            println!("order of completion [{}]: {:?}", route_id, sorted_buses.into_iter().map(|x| arrival_estimates_length_to_end(&x)).collect::<Vec<i32>>());
         }
 
         import_data.data.iter().for_each(|(agency_id, buses)| {
