@@ -149,6 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
 
         let mut list_of_vehicle_positions: Vec<gtfs_rt::FeedEntity> = Vec::new();
+        let mut listoftripupdates: Vec<gtfs_rt::FeedEntity> = Vec::new();
 
         let beginning = Instant::now();
 
@@ -384,7 +385,7 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                         alert: None
                     };
 
-
+                    listoftripupdates.push(tripupdate);
                     list_of_vehicle_positions.push(vehicleposition);
                 }
             }
@@ -402,11 +403,24 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
             entity: list_of_vehicle_positions,
         };
 
+        let trip_feed = gtfs_rt::FeedMessage {
+            header: gtfs_rt::FeedHeader {
+                gtfs_realtime_version: String::from("2.0"),
+                incrementality: None,
+                timestamp: Some(SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()),
+            },
+            entity: vec![],
+        }
+
        // println!("Encoded to protobuf! {:#?}", entire_feed_vehicles);
 
         //let entire_feed_vehicles = entire_feed_vehicles.encode_to_vec();
 
         let buf:Vec<u8> = entire_feed_vehicles.encode_to_vec();
+        let trip_buf:Vec<u8> = listoftripupdates.encode_to_vec();
 
                         let _: () = con
                                         .set(
@@ -415,6 +429,16 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                                                 "f-anteaterexpress~rt", "vehicles"
                                             ),
                                             &buf,
+                                        )
+                                        .unwrap();
+
+                                        let _: () = con
+                                        .set(
+                                            format!(
+                                                "gtfsrt|{}|{}",
+                                                "f-anteaterexpress~rt", "trips"
+                                            ),
+                                            &trip_buf,
                                         )
                                         .unwrap();
 
@@ -431,6 +455,19 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                                                 .to_string(),
                                         )
                                         .unwrap();
+
+                                        let _: () = con
+                                        .set(
+                                            format!(
+                                                "gtfsrttime|{}|{}",
+                                                "f-anteaterexpress~rt", "trips"
+                                            ),
+                                            SystemTime::now()
+                                                .duration_since(UNIX_EPOCH)
+                                                .unwrap()
+                                                .as_millis()
+                                                .to_string(),
+                                        );
 
                                         let _: () = con
                                         .set(
