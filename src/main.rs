@@ -413,14 +413,14 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                 .as_secs()),
             },
             entity: vec![],
-        }
+        };
 
        // println!("Encoded to protobuf! {:#?}", entire_feed_vehicles);
 
         //let entire_feed_vehicles = entire_feed_vehicles.encode_to_vec();
 
         let buf:Vec<u8> = entire_feed_vehicles.encode_to_vec();
-        let trip_buf:Vec<u8> = listoftripupdates.encode_to_vec();
+        let trip_buf:Vec<u8> = trip_feed.encode_to_vec();
 
                         let _: () = con
                                         .set(
@@ -432,7 +432,7 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                                         )
                                         .unwrap();
 
-                                        let _: () = con
+                                        let _:() = con
                                         .set(
                                             format!(
                                                 "gtfsrt|{}|{}",
@@ -442,7 +442,7 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                                         )
                                         .unwrap();
 
-                                        let _: () = con
+                                        let _:() = con
                                         .set(
                                             format!(
                                                 "gtfsrttime|{}|{}",
@@ -456,7 +456,7 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                                         )
                                         .unwrap();
 
-                                        let _: () = con
+                                        let _:() = con
                                         .set(
                                             format!(
                                                 "gtfsrttime|{}|{}",
@@ -467,9 +467,9 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                                                 .unwrap()
                                                 .as_millis()
                                                 .to_string(),
-                                        );
+                                        ).unwrap();
 
-                                        let _: () = con
+                                        let _ :()= con
                                         .set(
                                             format!(
                                                 "gtfsrtexists|{}",
