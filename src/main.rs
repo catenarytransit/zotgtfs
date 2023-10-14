@@ -350,6 +350,23 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                         alert: None
                     };
 
+                    let this_trip_length = arrival_estimates_length_to_end(bus) + 1;
+
+                    let this_trip_updates:Vec<ArrivalEstimates> = bus.arrival_estimates[0..(this_trip_length as usize) + 1].to_vec();
+
+                    let time_updates:Vec<gtfs_rt::trip_update::StopTimeUpdate> = this_trip_updates.iter().map(|x| gtfs_rt::trip_update::StopTimeUpdate {
+                        stop_sequence: None,
+                        stop_id: x.stop_id.clone(),
+                        //unix time
+                        arrival: Some(gtfs_rt::trip_update::StopTimeEvent {
+                            time: Some(chrono::DateTime::parse_from_rfc3339(x.arrival_at.as_ref().unwrap()).unwrap().timestamp()),
+                            delay: None,
+                            uncertainty: None
+                            
+                    }),
+                        departure: None,
+                        schedule_relationship: Some(0)
+                    }).collect::<Vec<gtfs_rt::trip_update::StopTimeUpdate>>();
 
                     let tripupdate = gtfs_rt::FeedEntity {
                         id: bus.vehicle_id.as_ref().unwrap().clone(),
@@ -362,7 +379,7 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                                 label: Some(bus.call_name.as_ref().unwrap().clone()),
                                 license_plate: None,
                             })
-                            , stop_time_update: vec![], timestamp:  Some(bus.last_updated_on.parse::<chrono::DateTime<chrono::Utc>>().unwrap().timestamp() as u64), delay: delay_hashmap.get(bus.vehicle_id.as_ref().unwrap()).map(|x| *x as i32), }
+                            , stop_time_update: time_updates, timestamp:  Some(bus.last_updated_on.parse::<chrono::DateTime<chrono::Utc>>().unwrap().timestamp() as u64), delay: delay_hashmap.get(bus.vehicle_id.as_ref().unwrap()).map(|x| *x as i32), }
                         ),
                         alert: None
                     };
