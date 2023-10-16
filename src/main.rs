@@ -412,7 +412,7 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                 .unwrap()
                 .as_secs()),
             },
-            entity: vec![],
+            entity: listoftripupdates,
         };
 
        // println!("Encoded to protobuf! {:#?}", entire_feed_vehicles);
