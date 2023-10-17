@@ -266,7 +266,7 @@ async fn main() {
             .serialize(gtfs_structures::Stop {
                 id: stop.stop_id.clone(),
                 code: Some(stop.code.clone()),
-                name: stop.name.clone(),
+                name: stop.name.clone().replace(" Stop ",""),
                 description: stop.description.clone(),
                 location_type: gtfs_structures::LocationType::StopPoint,
                 parent_station: None,
