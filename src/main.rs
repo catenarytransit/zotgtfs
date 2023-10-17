@@ -82,24 +82,41 @@ let is_friday = current_time_la.weekday() == chrono::Weekday::Fri;
 
 let current_time_in_seconds = (current_time_la.hour() * 3600) + (current_time_la.minute() * 60) + current_time_la.second();
 
-if trip.stop_times[0].departure_time.is_some() {
-    let departure_time = trip.stop_times[0].departure_time.as_ref().unwrap();
-
-    let diff = *departure_time as i32 - current_time_in_seconds as i32;
-    //large time means the trip hasn't started yet
-    //negative time means the trip has already started 
-
-    if diff > 1500 || diff < -3600 {
+    if trip.route_id != *route_id {
         return false;
     }
-}
+
+    /*if trip.stop_times[0].departure_time.is_some() {
+        let departure_time = trip.stop_times[0].departure_time.as_ref().unwrap();
+    
+        let diff = *departure_time as i32 - current_time_in_seconds as i32;
+        //large time means the trip hasn't started yet
+        //negative time means the trip has already started 
+    
+        
+        if diff > 1500 || diff < -3600 {
+            return false;
+        }
+    }*/
+
+    let departure_comparison = trip.stop_times.iter().find(|stop_time| stop_time.departure_time.is_some());
+
+    if departure_comparison.is_some() {
+        let departure_comparison = departure_comparison.unwrap();
+
+        let diff = departure_comparison.departure_time.unwrap() as i32 - current_time_in_seconds as i32;
+
+        if diff > 1500 || diff < -3600 {
+            return false;
+        }
+    }
 
 return match is_friday {
     true => {
-        calendarselected.friday == true && trip.route_id == *route_id
+        calendarselected.friday == true
     },
     false => {
-        calendarselected.monday == true && trip.route_id == *route_id
+        calendarselected.monday == true
     }
     }
 }
@@ -260,7 +277,7 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                             }
                         };
 
-                            if time_diff.abs() < 3600 {
+                            if true {
                                println!("time diff: {}", time_diff);
                                 match timedifference {
                                     Some(x) => {

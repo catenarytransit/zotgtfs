@@ -716,14 +716,14 @@ async fn main() {
 
                             //write the data to the csv
 
-                            let  trip_id = format!("{}-{}", route.route_id, tripnumber);
-
                             //get monthurs
 
                             let schedulename = match file.monthurs {
                                 true => "monthurs",
                                 false => "fri",
                             };
+                            
+                            let  trip_id = format!("{}-{}-{}", route.route_id, tripnumber, schedulename);
 
                             let rawtripgtfs = gtfs_structures::RawTrip {
                                 id: trip_id.clone(),
