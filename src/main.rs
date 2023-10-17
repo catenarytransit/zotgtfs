@@ -351,9 +351,9 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                         alert: None
                     };
 
-                    let this_trip_length = arrival_estimates_length_to_end(bus) + 1;
+                    let this_trip_length = std::cmp::min(arrival_estimates_length_to_end(bus) + 2, bus.arrival_estimates.len() as i32);
 
-                    let this_trip_updates:Vec<ArrivalEstimates> = bus.arrival_estimates[0..(this_trip_length as usize) + 1].to_vec();
+                    let this_trip_updates:Vec<ArrivalEstimates> = bus.arrival_estimates[0..this_trip_length as usize].to_vec();
 
                     let time_updates:Vec<gtfs_rt::trip_update::StopTimeUpdate> = this_trip_updates.iter().map(|x| gtfs_rt::trip_update::StopTimeUpdate {
                         stop_sequence: None,
@@ -412,7 +412,7 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                 .unwrap()
                 .as_secs()),
             },
-            entity: vec![],
+            entity: listoftripupdates,
         };
 
        // println!("Encoded to protobuf! {:#?}", entire_feed_vehicles);
