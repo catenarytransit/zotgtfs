@@ -159,6 +159,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await
             .unwrap();
 
+        if res.status() != 200 {
+            println!("Error: {}", res.status());
+            continue;
+        }
+
         println!("Downloaded {} chars", res.content_length().unwrap());
 
         let body = res.text().await.unwrap();
