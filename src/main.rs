@@ -154,7 +154,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let beginning = Instant::now();
 
         let res = client.get("https://transloc-api-1-2.p.rapidapi.com/vehicles.json?agencies=1039")
-            .header("X-Mashape-Key", "b0ebd9e8a5msh5aca234d74ce282p1737bbjsnddd18d7b9365")
+            .header("X-Mashape-Key", "5a51a5d8eamsh957095ccebfa10dp111874jsnafe6b4225d3d")
             .send()
             .await
             .unwrap();
