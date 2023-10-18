@@ -236,7 +236,7 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
 
             println!("possible trips on Route {}: {:?}",gtfs.get_route(route_id).unwrap().short_name , possible_trips.iter().map(|x| x.id.clone()).collect::<Vec<String>>());
 
-            for (i,bus) in (&sorted_buses).iter().rev().enumerate() {
+            for (i,bus) in (&sorted_buses).iter().enumerate() {
                 if possible_trips.len() == 0 {
                     vehicle_id_to_trip_id.insert(bus.vehicle_id.as_ref().unwrap().clone(), format!("extra-{}-{i}", bus.route_id.as_ref().unwrap().clone()));
                 } else {
@@ -303,7 +303,7 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                            } else {
                             println!("No trips left to search for {}", bus.vehicle_id.as_ref().unwrap().clone());
 
-                                
+
                            }
                         }
 
