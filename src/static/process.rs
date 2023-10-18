@@ -723,7 +723,7 @@ async fn main() {
                                 false => "fri",
                             };
                             
-                            let  trip_id = format!("{}-{}-{}", route.route_id, tripnumber, schedulename);
+                            let  trip_id = format!("{}-{}-{}", route.short_name, tripnumber, schedulename);
 
                             let rawtripgtfs = gtfs_structures::RawTrip {
                                 id: trip_id.clone(),
