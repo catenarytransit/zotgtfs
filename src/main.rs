@@ -109,6 +109,7 @@ let current_time_in_seconds = (current_time_la.hour() * 3600) + (current_time_la
         if diff > 1500 || diff < -3600 {
             return false;
         }
+    } else {
     }
 
 return match is_friday {
@@ -278,7 +279,7 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                         };
 
                             if true {
-                               println!("time diff: {}", time_diff);
+                              // println!("time diff: {}", time_diff);
                                 match timedifference {
                                     Some(x) => {
                                         //if the previous trip comparison is worse
@@ -301,6 +302,8 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                             }
                            } else {
                             println!("No trips left to search for {}", bus.vehicle_id.as_ref().unwrap().clone());
+
+                                
                            }
                         }
 
