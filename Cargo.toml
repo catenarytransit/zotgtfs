@@ -18,6 +18,7 @@ gtfs-structures = "0.34.0"
 polyline = "0.10.1"
 prost = "0.11.9"
 protobuf = "3.2.0"
+rand = "0.8.5"
 redis = "0.23.3"
 reqwest = {version = "0.11.20", features = ["brotli", "json"]}
 rgb = "0.8.36"

@@ -15,6 +15,10 @@ use chrono::Timelike;
 use chrono_tz::Tz;
 use chrono_tz::UTC;
 
+extern crate rand;
+
+use rand::Rng;
+use crate::rand::prelude::SliceRandom;
 
 use redis::Commands;
 use redis::RedisError;
@@ -164,6 +168,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let client = reqwest::Client::new();
 
+    let apikeys = [
+        "16aff0066fmsh91bdf05e1ddc2a9p1bf246jsn4e66fe3531f2",
+        "X7rzqy7Zx8mshBtXeYQjrv0aLyrYp1HBttujsnJ6BgNQxIMetU",
+        "1d4175ed60msh03c8157af1f76e9p1d8e56jsnc909aeb67a68",
+        "fd6fe9ee6dmshb6b307335f13cdap178324jsnaa4128a7eb3c"
+        ];
+
     loop {
 
         let mut list_of_vehicle_positions: Vec<gtfs_rt::FeedEntity> = Vec::new();
@@ -171,8 +182,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let beginning = Instant::now();
 
+        let mut rng = rand::thread_rng();
+        let choice = *(apikeys.choose(&mut rng).unwrap());
+
         let res = client.get("https://transloc-api-1-2.p.rapidapi.com/vehicles.json?agencies=1039")
-            .header("X-Mashape-Key", "5a51a5d8eamsh957095ccebfa10dp111874jsnafe6b4225d3d")
+            .header("X-Mashape-Key", choice)
             .send()
             .await
             .unwrap();
@@ -510,7 +524,7 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
 
         println!("Inserted into Redis!");
 
-        let time_left = 100 as f64 - (beginning.elapsed().as_millis() as f64);
+        let time_left = 1000 as f64 - (beginning.elapsed().as_millis() as f64);
 
         if time_left > 0.0 {
             println!("Sleeping for {} milliseconds", time_left);
