@@ -175,7 +175,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "fd6fe9ee6dmshb6b307335f13cdap178324jsnaa4128a7eb3c"
         ];
 
+    
+let tz: Tz = "America/Los_Angeles".parse().unwrap();
+
     loop {
+        let current_time = chrono::Utc::now();
+
+        let current_time_la = current_time.with_timezone(&tz);
+
+        let is_weekend = current_time_la.weekday() == chrono::Weekday::Sat || current_time_la.weekday() == chrono::Weekday::Sun;
+
+        if current_time_la.hour() < 6 || is_weekend {
+            println!("Sleeping for 10 minutes");
+            std::thread::sleep(std::time::Duration::from_millis(10 * 60 * 1000));
+            continue;
+        }
 
         let mut list_of_vehicle_positions: Vec<gtfs_rt::FeedEntity> = Vec::new();
         let mut listoftripupdates: Vec<gtfs_rt::FeedEntity> = Vec::new();
@@ -185,14 +199,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut rng = rand::thread_rng();
         let choice = *(apikeys.choose(&mut rng).unwrap());
 
+
         let res = client.get("https://transloc-api-1-2.p.rapidapi.com/vehicles.json?agencies=1039")
             .header("X-Mashape-Key", choice)
             .send()
-            .await
-            .unwrap();
+            .await;
+
+        if res.is_err() {
+            println!("Error: {}", res.err().unwrap());
+            std::thread::sleep(std::time::Duration::from_millis(10_000));
+            continue;
+        }
+
+        let res = res.unwrap();
 
         if res.status() != 200 {
             println!("Error: {}", res.status());
+            std::thread::sleep(std::time::Duration::from_millis(10_000));
             continue;
         }
 
