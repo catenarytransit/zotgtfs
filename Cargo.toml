@@ -17,7 +17,7 @@ gtfs-rt = "0.3.0"
 gtfs-structures = "0.36.1"
 polyline = "0.10.1"
 prost = "0.11.9"
-protobuf = "3.2.0"
+protobuf = "3.3.0"
 rand = "0.8.5"
 redis = "0.23.3"
 reqwest = {version = "0.11.22", features = ["brotli", "json"]}
