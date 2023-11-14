@@ -18,9 +18,6 @@ Now your Anteater static file is done!
 
 UC Irvine Anteater Express Agency Number: 1039
 
-N Line Mon-thursday unfinished
-Friday data entire data unfinished
-
 ** DO NOT UPDATE PROST VERSION!! Not backwards compatible! **
 
 ### Shapes fix
@@ -45,3 +42,7 @@ Leave field empty: Algorithm estimates
 # Motivation
 
 I have no life and I want this data to show up on the rest of the Catenary
+
+### Extra notes
+
+ASUCI is a bunch of stupid losers.
