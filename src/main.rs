@@ -172,7 +172,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "16aff0066fmsh91bdf05e1ddc2a9p1bf246jsn4e66fe3531f2",
         "X7rzqy7Zx8mshBtXeYQjrv0aLyrYp1HBttujsnJ6BgNQxIMetU",
         "1d4175ed60msh03c8157af1f76e9p1d8e56jsnc909aeb67a68",
-        "fd6fe9ee6dmshb6b307335f13cdap178324jsnaa4128a7eb3c"
+        "fd6fe9ee6dmshb6b307335f13cdap178324jsnaa4128a7eb3c",
+        "ffbdebfa9emshffc32ee2cffe4fcp183c4bjsn73d4e7dd0123"
         ];
 
     
@@ -547,7 +548,7 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
 
         println!("Inserted into Redis!");
 
-        let time_left = 1000 as f64 - (beginning.elapsed().as_millis() as f64);
+        let time_left = 800 as f64 - (beginning.elapsed().as_millis() as f64);
 
         if time_left > 0.0 {
             println!("Sleeping for {} milliseconds", time_left);
