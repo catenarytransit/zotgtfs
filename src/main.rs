@@ -483,67 +483,46 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
 
         let buf:Vec<u8> = entire_feed_vehicles.encode_to_vec();
         let trip_buf:Vec<u8> = trip_feed.encode_to_vec();
+        
+        let _: () = con.set(
+            format!(
+                "gtfsrt|{}|{}",
+                "f-anteaterexpress~rt", "vehicles"
+            ),
+            &buf,
+        ).unwrap();
 
-                        let _: () = con
-                                        .set(
-                                            format!(
-                                                "gtfsrt|{}|{}",
-                                                "f-anteaterexpress~rt", "vehicles"
-                                            ),
-                                            &buf,
-                                        )
-                                        .unwrap();
+        let _:() = con.set(
+            format!(
+                "gtfsrt|{}|{}",
+                "f-anteaterexpress~rt", "trips"
+            ),
+            &trip_buf,
+        ).unwrap();
 
-                                        let _:() = con
-                                        .set(
-                                            format!(
-                                                "gtfsrt|{}|{}",
-                                                "f-anteaterexpress~rt", "trips"
-                                            ),
-                                            &trip_buf,
-                                        )
-                                        .unwrap();
+        let _:() = con.set(
+            format!(
+                "gtfsrttime|{}|{}",
+                "f-anteaterexpress~rt", "vehicles"
+            ),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis().to_string()
+        ).unwrap();
 
-                                        let _:() = con
-                                        .set(
-                                            format!(
-                                                "gtfsrttime|{}|{}",
-                                                "f-anteaterexpress~rt", "vehicles"
-                                            ),
-                                            SystemTime::now()
-                                                .duration_since(UNIX_EPOCH)
-                                                .unwrap()
-                                                .as_millis()
-                                                .to_string(),
-                                        )
-                                        .unwrap();
+        let _:() = con.set(
+            format!(
+                "gtfsrttime|{}|{}",
+                "f-anteaterexpress~rt", "trips"
+            ),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis().to_string()
+        ).unwrap();
 
-                                        let _:() = con
-                                        .set(
-                                            format!(
-                                                "gtfsrttime|{}|{}",
-                                                "f-anteaterexpress~rt", "trips"
-                                            ),
-                                            SystemTime::now()
-                                                .duration_since(UNIX_EPOCH)
-                                                .unwrap()
-                                                .as_millis()
-                                                .to_string(),
-                                        ).unwrap();
-
-                                        let _ :()= con
-                                        .set(
-                                            format!(
-                                                "gtfsrtexists|{}",
-                                                "f-anteaterexpress~rt"
-                                            ),
-                                            SystemTime::now()
-                                                .duration_since(UNIX_EPOCH)
-                                                .unwrap()
-                                                .as_millis()
-                                                .to_string(),
-                                        )
-                                        .unwrap();
+        let _ :()= con.set(
+            format!(
+                "gtfsrtexists|{}",
+                "f-anteaterexpress~rt"
+            ),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis().to_string()
+        ).unwrap();
 
         println!("Inserted into Redis!");
 
