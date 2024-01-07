@@ -821,8 +821,8 @@ async fn main() {
         friday: true,
         saturday: false,
         sunday: false,
-        start_date:  chrono::naive::NaiveDate::from_ymd_opt(2023,09,25).unwrap(),
-        end_date: chrono::naive::NaiveDate::from_ymd_opt(2023,12,15).unwrap(),
+        start_date:  chrono::naive::NaiveDate::from_ymd_opt(2024,1,8).unwrap(),
+        end_date: chrono::naive::NaiveDate::from_ymd_opt(2024,3,22).unwrap(),
     }).unwrap();
 
     let calendar_csv = String::from_utf8(calendarwriter.into_inner().unwrap()).unwrap();
@@ -832,23 +832,20 @@ async fn main() {
 
     let mut calendardateswriter = Writer::from_writer(vec![]);
 
-    calendardateswriter.serialize(gtfs_structures::CalendarDate {
-        service_id: String::from("fri"),
-        date: chrono::naive::NaiveDate::from_ymd_opt(2023,11,10).unwrap(),
-        exception_type: gtfs_structures::Exception::Deleted,
-    }).unwrap();
+    let cancellations = [
+        //MLK JR DAY
+        ((2024,01,15), "monthurs"),
+        //President's day
+        ((2024,02,19), "monthurs")
+    ];
 
-    calendardateswriter.serialize(gtfs_structures::CalendarDate {
-        service_id: String::from("monthurs"),
-        date: chrono::naive::NaiveDate::from_ymd_opt(2023,11,23).unwrap(),
-        exception_type: gtfs_structures::Exception::Deleted,
-    }).unwrap();
-
-    calendardateswriter.serialize(gtfs_structures::CalendarDate {
-        service_id: String::from("fri"),
-        date: chrono::naive::NaiveDate::from_ymd_opt(2023,11,24).unwrap(),
-        exception_type: gtfs_structures::Exception::Deleted,
-    }).unwrap();
+    for cancel in cancellations {
+        calendardateswriter.serialize(gtfs_structures::CalendarDate {
+            service_id: String::from(cancel.1),
+            date: chrono::naive::NaiveDate::from_ymd_opt(cancel.0.0,cancel.0.1, cancel.0.2).unwrap(),
+            exception_type: gtfs_structures::Exception::Deleted,
+        }).unwrap();
+    }
 
     //write now
 
