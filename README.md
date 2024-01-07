@@ -12,6 +12,10 @@ cargo run --bin processstatic
 
 3. Zip the folder `anteater_gtfs` with no underlying folder inside the final zip
 
+```bash
+zip -r anteater_express.zip anteater_express/
+```
+
 Now your Anteater static file is done!
 
 # Notes
@@ -41,8 +45,8 @@ Leave field empty: Algorithm estimates
 
 # Motivation
 
-I have no life and I want this data to show up on the rest of the Catenary
+I want this data to show up on the rest of the Catenary
 
 ### Extra notes
 
-ASUCI is a bunch of stupid losers.
+If ASUCI poisons my lunch, let's just say I won't be surprised.

@@ -1,4 +1,3 @@
 service_id,date,exception_type
-fri,20231110,2
-monthurs,20231123,2
-fri,20231124,2
+monthurs,20240115,2
+monthurs,20240219,2
