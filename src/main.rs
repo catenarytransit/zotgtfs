@@ -2,29 +2,21 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
-use protobuf::{CodedInputStream, Message as ProtobufMessage};
 use prost::Message;
 use std::time::UNIX_EPOCH;
-use gtfs_rt::EntitySelector;
 use chrono::Datelike;
-use chrono_tz::US::Pacific;
-use gtfs_rt::TimeRange;
 use serde_json;
-use chrono::TimeZone;
 use chrono::Timelike;
 use chrono_tz::Tz;
-use chrono_tz::UTC;
 
 extern crate rand;
 
-use rand::Rng;
 use crate::rand::prelude::SliceRandom;
 
 use redis::Commands;
-use redis::RedisError;
-use redis::{Client as RedisClient, RedisResult};
+use redis::Client as RedisClient;
 
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct TranslocRealtime {
@@ -66,26 +58,18 @@ struct TranslocLocation {
     lat: f32,
     lng: f32
 }
-
-fn allowtrip(trip_id: &String, trip: &gtfs_structures::Trip, route_id: &String, gtfs: &gtfs_structures::Gtfs) -> bool {
-
+//fn allowtrip(trip_id: &String, trip: &gtfs_structures::Trip, route_id: &String, gtfs: &gtfs_structures::Gtfs) -> bool {
+fn allowtrip(trip: &gtfs_structures::Trip, route_id: &String, gtfs: &gtfs_structures::Gtfs) -> bool {
 
     let calendarselected = gtfs.calendar.get(trip.service_id.as_str()).unwrap();
-            
     //is it friday in Los Angeles?
     // Get the timezone for Los Angeles.
-let current_time = chrono::Utc::now();
-
-let tz: Tz = "America/Los_Angeles".parse().unwrap();
-
-// Convert this to the Los Angeles timezone.
-
-let current_time_la = current_time.with_timezone(&tz);
-
-let is_friday = current_time_la.weekday() == chrono::Weekday::Fri;
-
-let current_time_in_seconds = (current_time_la.hour() * 3600) + (current_time_la.minute() * 60) + current_time_la.second();
-
+    let current_time = chrono::Utc::now();
+    let tz: Tz = "America/Los_Angeles".parse().unwrap();
+    // Convert this to the Los Angeles timezone.
+    let current_time_la = current_time.with_timezone(&tz);
+    let is_friday = current_time_la.weekday() == chrono::Weekday::Fri;
+    let current_time_in_seconds = (current_time_la.hour() * 3600) + (current_time_la.minute() * 60) + current_time_la.second();
     if trip.route_id != *route_id {
         return false;
     }
@@ -113,16 +97,15 @@ let current_time_in_seconds = (current_time_la.hour() * 3600) + (current_time_la
         if diff > 1500 || diff < -3600 {
             return false;
         }
-    } else {
     }
 
-return match is_friday {
-    true => {
-        calendarselected.friday == true
-    },
-    false => {
-        calendarselected.monday == true
-    }
+    return match is_friday {
+        true => {
+            calendarselected.friday == true
+        },
+        false => {
+            calendarselected.monday == true
+        }
     }
 }
 
@@ -172,7 +155,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "16aff0066fmsh91bdf05e1ddc2a9p1bf246jsn4e66fe3531f2",
         "X7rzqy7Zx8mshBtXeYQjrv0aLyrYp1HBttujsnJ6BgNQxIMetU",
         "1d4175ed60msh03c8157af1f76e9p1d8e56jsnc909aeb67a68",
-        "fd6fe9ee6dmshb6b307335f13cdap178324jsnaa4128a7eb3c"
+        "fd6fe9ee6dmshb6b307335f13cdap178324jsnaa4128a7eb3c",
+        "ffbdebfa9emshffc32ee2cffe4fcp183c4bjsn73d4e7dd0123"
         ];
 
     
@@ -231,7 +215,7 @@ let tz: Tz = "America/Los_Angeles".parse().unwrap();
 
         import_data.data.iter().for_each(|(agency_id, buses)| {
             if agency_id.as_str() == "1039" {
-                for (i, bus) in buses.iter().enumerate() {
+                for (_i, bus) in buses.iter().enumerate() {
                     if bus.route_id.is_some() {
                         if grouped_by_route.contains_key(bus.route_id.as_ref().unwrap()) {
                             grouped_by_route.get_mut(bus.route_id.as_ref().unwrap()).unwrap().push(bus.clone());
@@ -252,9 +236,7 @@ let tz: Tz = "America/Los_Angeles".parse().unwrap();
 
 let current_time_la = current_time.with_timezone(&tz);
 
-let midnight = current_time_la.date().and_hms(0, 0, 0);
-
-let midnight_timestamp = midnight.timestamp();
+let midnight_timestamp = current_time_la.date_naive().and_hms_opt(0, 0, 0).unwrap().timestamp();
 
 let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
 
@@ -267,7 +249,7 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
 
             println!("order of completion [{}]: {:?}", route_id, &sorted_buses.iter().map(|x| arrival_estimates_length_to_end(&x)).collect::<Vec<i32>>());
             
-            let mut possible_trips = gtfs.trips.iter().filter(|(trip_id,trip)| allowtrip(&trip_id, &trip, &route_id, &gtfs)).map(|(trip_id, trip)| trip).collect::<Vec<&gtfs_structures::Trip>>();
+            let mut possible_trips = gtfs.trips.iter().filter(|(trip_id,trip)| allowtrip(&trip, &route_id, &gtfs)).map(|(trip_id, trip)| trip).collect::<Vec<&gtfs_structures::Trip>>();
 
             possible_trips.sort_by(|trip_a, trip_b| trip_a.id.cmp(&trip_b.id));
 
@@ -370,7 +352,7 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
 
         import_data.data.iter().for_each(|(agency_id, buses)| {
             if agency_id.as_str() == "1039" {
-                for (i, bus) in buses.iter().enumerate() {
+                for (_i, bus) in buses.iter().enumerate() {
 
                     let bruhposition = Some(gtfs_rt::Position {
                         latitude: bus.location.lat,
@@ -398,6 +380,7 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                                     id: Some(bus.vehicle_id.as_ref().unwrap().clone()),
                                     label: Some(bus.call_name.as_ref().unwrap().clone()),
                                     license_plate: None,
+                                    wheelchair_accessible: None,
                                 }),
                                 position: bruhposition,
                                 current_stop_sequence: None,
@@ -405,12 +388,21 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                                 current_status: None,
                                 timestamp: Some(bus.last_updated_on.parse::<chrono::DateTime<chrono::Utc>>().unwrap().timestamp() as u64),
                                 congestion_level: None,
-                                occupancy_status: None
+                                occupancy_status: None,
+                                occupancy_percentage: None,
+                                multi_carriage_details: vec![gtfs_rt::vehicle_position::CarriageDetails { 
+                                    id: None, 
+                                    label: None, 
+                                    occupancy_status: None, 
+                                    occupancy_percentage: None, 
+                                    carriage_sequence: None 
+                                }],
                             }
                         ),
                         is_deleted: None,
                         trip_update: None,
-                        alert: None
+                        alert: None,
+                        shape: None,
                     };
 
                     let this_trip_length = std::cmp::min(arrival_estimates_length_to_end(bus) + 2, bus.arrival_estimates.len() as i32);
@@ -424,9 +416,10 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                         arrival: Some(gtfs_rt::trip_update::StopTimeEvent {
                             time: Some(chrono::DateTime::parse_from_rfc3339(x.arrival_at.as_ref().unwrap()).unwrap().timestamp()),
                             delay: None,
-                            uncertainty: None
-                            
-                    }),
+                            uncertainty: None    
+                        }),
+                        departure_occupancy_status: None,
+                        stop_time_properties: None,
                         departure: None,
                         schedule_relationship: Some(0)
                     }).collect::<Vec<gtfs_rt::trip_update::StopTimeUpdate>>();
@@ -436,15 +429,22 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
                         vehicle: None,
                         is_deleted: None,
                         trip_update: Some(
-                           gtfs_rt::TripUpdate { trip: trip_ident, vehicle: 
-                            Some(gtfs_rt::VehicleDescriptor {
-                                id: Some(bus.vehicle_id.as_ref().unwrap().clone()),
-                                label: Some(bus.call_name.as_ref().unwrap().clone()),
-                                license_plate: None,
-                            })
-                            , stop_time_update: time_updates, timestamp:  Some(bus.last_updated_on.parse::<chrono::DateTime<chrono::Utc>>().unwrap().timestamp() as u64), delay: delay_hashmap.get(bus.vehicle_id.as_ref().unwrap()).map(|x| *x as i32), }
+                           gtfs_rt::TripUpdate { 
+                                trip: trip_ident, 
+                                trip_properties: None,
+                                vehicle: Some(gtfs_rt::VehicleDescriptor {
+                                    id: Some(bus.vehicle_id.as_ref().unwrap().clone()),
+                                    label: Some(bus.call_name.as_ref().unwrap().clone()),
+                                    license_plate: None,
+                                    wheelchair_accessible: None,
+                                }), 
+                                stop_time_update: time_updates, 
+                                timestamp:  Some(bus.last_updated_on.parse::<chrono::DateTime<chrono::Utc>>().unwrap().timestamp() as u64), 
+                                delay: delay_hashmap.get(bus.vehicle_id.as_ref().unwrap()).map(|x| *x as i32), 
+                            }
                         ),
-                        alert: None
+                        alert: None,
+                        shape: None,
                     };
 
                     listoftripupdates.push(tripupdate);
@@ -483,71 +483,50 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
 
         let buf:Vec<u8> = entire_feed_vehicles.encode_to_vec();
         let trip_buf:Vec<u8> = trip_feed.encode_to_vec();
+        
+        let _: () = con.set(
+            format!(
+                "gtfsrt|{}|{}",
+                "f-anteaterexpress~rt", "vehicles"
+            ),
+            &buf,
+        ).unwrap();
 
-                        let _: () = con
-                                        .set(
-                                            format!(
-                                                "gtfsrt|{}|{}",
-                                                "f-anteaterexpress~rt", "vehicles"
-                                            ),
-                                            &buf,
-                                        )
-                                        .unwrap();
+        let _:() = con.set(
+            format!(
+                "gtfsrt|{}|{}",
+                "f-anteaterexpress~rt", "trips"
+            ),
+            &trip_buf,
+        ).unwrap();
 
-                                        let _:() = con
-                                        .set(
-                                            format!(
-                                                "gtfsrt|{}|{}",
-                                                "f-anteaterexpress~rt", "trips"
-                                            ),
-                                            &trip_buf,
-                                        )
-                                        .unwrap();
+        let _:() = con.set(
+            format!(
+                "gtfsrttime|{}|{}",
+                "f-anteaterexpress~rt", "vehicles"
+            ),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis().to_string()
+        ).unwrap();
 
-                                        let _:() = con
-                                        .set(
-                                            format!(
-                                                "gtfsrttime|{}|{}",
-                                                "f-anteaterexpress~rt", "vehicles"
-                                            ),
-                                            SystemTime::now()
-                                                .duration_since(UNIX_EPOCH)
-                                                .unwrap()
-                                                .as_millis()
-                                                .to_string(),
-                                        )
-                                        .unwrap();
+        let _:() = con.set(
+            format!(
+                "gtfsrttime|{}|{}",
+                "f-anteaterexpress~rt", "trips"
+            ),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis().to_string()
+        ).unwrap();
 
-                                        let _:() = con
-                                        .set(
-                                            format!(
-                                                "gtfsrttime|{}|{}",
-                                                "f-anteaterexpress~rt", "trips"
-                                            ),
-                                            SystemTime::now()
-                                                .duration_since(UNIX_EPOCH)
-                                                .unwrap()
-                                                .as_millis()
-                                                .to_string(),
-                                        ).unwrap();
-
-                                        let _ :()= con
-                                        .set(
-                                            format!(
-                                                "gtfsrtexists|{}",
-                                                "f-anteaterexpress~rt"
-                                            ),
-                                            SystemTime::now()
-                                                .duration_since(UNIX_EPOCH)
-                                                .unwrap()
-                                                .as_millis()
-                                                .to_string(),
-                                        )
-                                        .unwrap();
+        let _ :()= con.set(
+            format!(
+                "gtfsrtexists|{}",
+                "f-anteaterexpress~rt"
+            ),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis().to_string()
+        ).unwrap();
 
         println!("Inserted into Redis!");
 
-        let time_left = 1000 as f64 - (beginning.elapsed().as_millis() as f64);
+        let time_left = 800 as f64 - (beginning.elapsed().as_millis() as f64);
 
         if time_left > 0.0 {
             println!("Sleeping for {} milliseconds", time_left);

@@ -1,7 +1,4 @@
 use reqwest::Client as ReqwestClient;
-use serde::{Deserialize, Serialize};
-use serde_json::Map;
-use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::Write;
 
