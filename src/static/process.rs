@@ -799,6 +799,9 @@ async fn main() {
 
     let mut calendarwriter = Writer::from_writer(vec![]);
 
+    let start_date = chrono::naive::NaiveDate::from_ymd_opt(2024,1,8).unwrap();
+    let end_date = chrono::naive::NaiveDate::from_ymd_opt(2024,3,22).unwrap();
+
     calendarwriter.serialize(gtfs_structures::Calendar {
         id: String::from("monthurs"),
         monday: true,
@@ -808,8 +811,8 @@ async fn main() {
         friday: true,
         saturday: true,
         sunday: true,
-        start_date:  chrono::naive::NaiveDate::from_ymd_opt(2023,09,25).unwrap(),
-        end_date: chrono::naive::NaiveDate::from_ymd_opt(2023,12,15).unwrap(),
+        start_date: start_date.clone(),
+        end_date: end_date.clone(),
     }).unwrap();
 
     calendarwriter.serialize(gtfs_structures::Calendar {
@@ -821,8 +824,8 @@ async fn main() {
         friday: true,
         saturday: false,
         sunday: false,
-        start_date:  chrono::naive::NaiveDate::from_ymd_opt(2024,1,8).unwrap(),
-        end_date: chrono::naive::NaiveDate::from_ymd_opt(2024,3,22).unwrap(),
+        start_date: start_date.clone(),
+        end_date: end_date.clone(),
     }).unwrap();
 
     let calendar_csv = String::from_utf8(calendarwriter.into_inner().unwrap()).unwrap();
