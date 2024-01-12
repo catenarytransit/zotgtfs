@@ -13,7 +13,7 @@ cargo run --bin processstatic
 3. Zip the folder `anteater_gtfs` with no underlying folder inside the final zip
 
 ```bash
-zip -r anteater_express.zip anteater_express/
+zip -r anteater_gtfs.zip anteater_express/
 ```
 
 Now your Anteater static file is done!
