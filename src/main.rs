@@ -391,14 +391,18 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
 
                     let vehicleposition = gtfs_rt::FeedEntity {
                         id: bus.vehicle_id.as_ref().unwrap().clone(),
+                        shape: None,
                         vehicle: Some(
                             gtfs_rt::VehiclePosition {
                                 trip: Some(trip_ident.clone()),
                                 vehicle: Some(gtfs_rt::VehicleDescriptor {
+                                    wheelchair_accessible: Some(2),
                                     id: Some(bus.vehicle_id.as_ref().unwrap().clone()),
                                     label: Some(bus.call_name.as_ref().unwrap().clone()),
                                     license_plate: None,
                                 }),
+                                multi_carriage_details: vec![],
+                                occupancy_percentage: None,
                                 position: bruhposition,
                                 current_stop_sequence: None,
                                 stop_id: None,
@@ -419,6 +423,8 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
 
                     let time_updates:Vec<gtfs_rt::trip_update::StopTimeUpdate> = this_trip_updates.iter().map(|x| gtfs_rt::trip_update::StopTimeUpdate {
                         stop_sequence: None,
+                        departure_occupancy_status: None,
+                        stop_time_properties: None,
                         stop_id: x.stop_id.clone(),
                         //unix time
                         arrival: Some(gtfs_rt::trip_update::StopTimeEvent {
@@ -433,14 +439,18 @@ let mut delay_hashmap: HashMap<String, i32> = HashMap::new();
 
                     let tripupdate = gtfs_rt::FeedEntity {
                         id: bus.vehicle_id.as_ref().unwrap().clone(),
+                        shape: None,
                         vehicle: None,
                         is_deleted: None,
                         trip_update: Some(
-                           gtfs_rt::TripUpdate { trip: trip_ident, vehicle: 
+                           gtfs_rt::TripUpdate { trip: trip_ident, 
+                            trip_properties: None,
+                            vehicle: 
                             Some(gtfs_rt::VehicleDescriptor {
                                 id: Some(bus.vehicle_id.as_ref().unwrap().clone()),
                                 label: Some(bus.call_name.as_ref().unwrap().clone()),
                                 license_plate: None,
+                                wheelchair_accessible: Some(2)
                             })
                             , stop_time_update: time_updates, timestamp:  Some(bus.last_updated_on.parse::<chrono::DateTime<chrono::Utc>>().unwrap().timestamp() as u64), delay: delay_hashmap.get(bus.vehicle_id.as_ref().unwrap()).map(|x| *x as i32), }
                         ),

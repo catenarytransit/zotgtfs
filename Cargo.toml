@@ -2,6 +2,7 @@
 name = "zotgtfs"
 version = "0.2.0"
 edition = "2021"
+description = "Conversion of Anteater Express data to GTFS Schedule and Realtime"
 
 [lints.rust]
 unused_must_use = "deny"
