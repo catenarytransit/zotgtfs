@@ -74,7 +74,8 @@
                 "name": "M_Friday.csv",
                 "monthurs": false
             }
-        ]
+        ],
+        "overrideshape": "overrideshapes/M.geojson"
     },
     {
         "name": "N",
