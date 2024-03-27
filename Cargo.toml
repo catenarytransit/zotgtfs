@@ -1,6 +1,6 @@
 [package]
 name = "zotgtfs"
-license-file = "LICENSE.txt"
+license = "AGPL-3.0"
 version = "0.2.0"
 edition = "2021"
 description = "Conversion of Anteater Express data to GTFS Schedule and Realtime"
