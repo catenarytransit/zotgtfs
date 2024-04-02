@@ -805,11 +805,11 @@ async fn main() {
         tuesday: true,
         wednesday: true,
         thursday: true,
-        friday: true,
-        saturday: true,
-        sunday: true,
-        start_date:  chrono::naive::NaiveDate::from_ymd_opt(2023,09,25).unwrap(),
-        end_date: chrono::naive::NaiveDate::from_ymd_opt(2023,12,15).unwrap(),
+        friday: false,
+        saturday: false,
+        sunday: false,
+        start_date:  chrono::naive::NaiveDate::from_ymd_opt(2024,04,01).unwrap(),
+        end_date: chrono::naive::NaiveDate::from_ymd_opt(2023,06,14).unwrap(),
     }).unwrap();
 
     calendarwriter.serialize(gtfs_structures::Calendar {
@@ -821,8 +821,8 @@ async fn main() {
         friday: true,
         saturday: false,
         sunday: false,
-        start_date:  chrono::naive::NaiveDate::from_ymd_opt(2024,1,8).unwrap(),
-        end_date: chrono::naive::NaiveDate::from_ymd_opt(2024,3,22).unwrap(),
+        start_date:  chrono::naive::NaiveDate::from_ymd_opt(2024,04,01).unwrap(),
+        end_date: chrono::naive::NaiveDate::from_ymd_opt(2024,06,14).unwrap(),
     }).unwrap();
 
     let calendar_csv = String::from_utf8(calendarwriter.into_inner().unwrap()).unwrap();
@@ -833,10 +833,8 @@ async fn main() {
     let mut calendardateswriter = Writer::from_writer(vec![]);
 
     let cancellations = [
-        //MLK JR DAY
-        ((2024,01,15), "monthurs"),
-        //President's day
-        ((2024,02,19), "monthurs")
+        //Memorial day
+        ((2024,05,27), "monthurs")
     ];
 
     for cancel in cancellations {
