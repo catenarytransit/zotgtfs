@@ -7,6 +7,8 @@ https://shuttle.uci.edu/ Unfortunately, I am too busy to deal with this!
 
 Your goal is to provide a function which returns Gtfs-rt. You can return the vehicles / trips seperately in the same struct, or put them in the same protobuf data structure. Up to you.
 
+The code should be in `src/lib.rs`, please make some test functions using rust's built in test features!
+
 Documentation for GTFS-rt can be found here:
 https://docs.rs/gtfs-rt/latest/gtfs_rt/
 and here https://gtfs.org/
