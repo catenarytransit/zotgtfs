@@ -41,6 +41,6 @@ path = "src/static/download.rs"
 name = "processstatic"
 path = "src/static/process.rs"
 
-[[lib]]
+[lib]
 name = "zotgtfs"
 path = "src/lib.rs"
