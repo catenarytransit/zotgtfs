@@ -40,3 +40,7 @@ path = "src/static/download.rs"
 [[bin]]
 name = "processstatic"
 path = "src/static/process.rs"
+
+[[lib]]
+name = "zotgtfs"
+path = "src/lib.rs"
