@@ -1,14 +1,75 @@
 use serde::Deserialize;
 use serde_json::from_str;
 use std::error::Error;
+use std::time::SystemTime;
+use gtfs_rt::*;
 
-// pub struct AntExGtfsRt {
-//     pub vehicle_positions: gtfs_rt::FeedMessage,
-//     //pub trip_positions: gtfs_rt::FeedMessage,
-// }
-// pub async fn get_gtfs_rt() -> Result<AntExGtfsRt, Box<dyn Error + Send + Sync>> {
-
-// }
+pub async fn get_gtfs_rt() -> Result<gtfs_rt::FeedMessage, Box<dyn std::error::Error + Send + Sync>> {
+    // steps:
+    // let anteater_data = parse_data("[website information]")?;
+    let anteater_entities: Vec<FeedEntity> = Vec::new();
+    // for i in 1..anteater_data.len() {
+    //      let vehicle = match deserialized_data.get(i) {
+    //          Some(x) => x,
+    //          _ => Err(Box::new(std::io::Error::new(
+    //              std::io::ErrorKind::Other,
+    //              "Invalid String",
+    //              ))),
+    //      };
+    //      anteater_entities.push(FeedEntity {
+    //          id: i,
+    //          is_deleted: false,
+    //          trip_update: None,
+    //          vehicle: VehiclePosition {
+    //              trip: TripDescriptor {
+    //                  trip_id: "", //fetch from gtfs static
+    //                  route_id: vehicle.route_id,
+    //                  direction_id: 0,
+    //                  start_time: None,
+    //                  start_date: None,
+    //                  schedule_relationship: None,
+    //                  modified_trip: None,
+    //              },
+    //              vehicle: VehicleDescriptor {
+    //                  id: vehicle.vehicle_id,
+    //                  label: vehicle.name,
+    //                  license_plate: None,
+    //                  wheelchair_accessible: None,
+    //              },
+    //              position: Position {
+    //                  latitude: vehicle.latitude,
+    //                  logitude: vehicle.longitude,
+    //                  bearing: vehicle.heading,
+    //                  odometer: None,
+    //                  speed: GroundSpeed,
+    //              },
+    //              current_stop_sequence: 0, //fetch from gtfs
+    //              stop_id: "", //fetch from gtfs
+    //              current_status: None,
+    //              timestamp: None,
+    //              congestion_level: None,
+    //              occupancy_status: None,
+    //              occupancy_percentage: None,
+    //              multi_carriage_details: None,
+    //          },
+    //          alert: None,
+    //          shape: None,
+    //          stop: None, //fetch from gtfs
+    //          trip_modifications: None,
+    //      });
+    // }
+    let anteater_gtfs = gtfs_rt::FeedMessage {
+        header: FeedHeader {
+            gtfs_realtime_version: "2.0".to_string(),
+            incrementality: Some(1),
+            timestamp: Some(SystemTime::now()
+                .elapsed()?
+                .as_secs()),
+        },
+        entity: anteater_entities,
+    };
+    return Ok(anteater_gtfs);
+}
 
 #[derive(Deserialize)]
 struct AnteaterExpressData {
@@ -42,11 +103,14 @@ into a struct, or returns an error if the string provided
 is invalid.
  */
 fn parse_data(data: String) -> Result<Vec<AnteaterExpressData>, Box<dyn Error + Send + Sync>> {
-    let prefix_index = data.find("(");
+    let prefix_index = data.find("("); 
     let suffix_index = data.chars().rev().position(|x| x == ')');
     if let (Some(prefix_index), Some(suffix_index)) = (prefix_index, suffix_index) {
+        //index at which data starts
         let suffix_index = data.len() - (suffix_index + 1);
+        //index at which data ends
         let prefix_index = prefix_index + 1;
+        // data is iterated through, skips up to prefix_index, takes up to suffix_index, and collects the values
         let data: String = data
             .chars()
             .skip(prefix_index)
