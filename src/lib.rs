@@ -3,61 +3,37 @@ use serde_json::from_str;
 use std::error::Error;
 use std::time::SystemTime;
 use gtfs_rt::*;
+use gtfs_rt::vehicle_position::*;
 
 pub async fn get_gtfs_rt() -> Result<gtfs_rt::FeedMessage, Box<dyn std::error::Error + Send + Sync>> {
     // steps:
-    // let anteater_data = parse_data("[website information]")?;
-    let anteater_entities: Vec<FeedEntity> = Vec::new();
-    // for i in 1..anteater_data.len() {
-    //      let vehicle = match deserialized_data.get(i) {
-    //          Some(x) => x,
-    //          _ => Err(Box::new(std::io::Error::new(
-    //              std::io::ErrorKind::Other,
-    //              "Invalid String",
-    //              ))),
-    //      };
-    //      anteater_entities.push(FeedEntity {
-    //          id: i,
-    //          is_deleted: false,
-    //          trip_update: None,
-    //          vehicle: VehiclePosition {
-    //              trip: TripDescriptor {
-    //                  trip_id: "", //fetch from gtfs static
-    //                  route_id: vehicle.route_id,
-    //                  direction_id: 0,
-    //                  start_time: None,
-    //                  start_date: None,
-    //                  schedule_relationship: None,
-    //                  modified_trip: None,
-    //              },
-    //              vehicle: VehicleDescriptor {
-    //                  id: vehicle.vehicle_id,
-    //                  label: vehicle.name,
-    //                  license_plate: None,
-    //                  wheelchair_accessible: None,
-    //              },
-    //              position: Position {
-    //                  latitude: vehicle.latitude,
-    //                  logitude: vehicle.longitude,
-    //                  bearing: vehicle.heading,
-    //                  odometer: None,
-    //                  speed: GroundSpeed,
-    //              },
-    //              current_stop_sequence: 0, //fetch from gtfs
-    //              stop_id: "", //fetch from gtfs
-    //              current_status: None,
-    //              timestamp: None,
-    //              congestion_level: None,
-    //              occupancy_status: None,
-    //              occupancy_percentage: None,
-    //              multi_carriage_details: None,
-    //          },
-    //          alert: None,
-    //          shape: None,
-    //          stop: None, //fetch from gtfs
-    //          trip_modifications: None,
-    //      });
-    // }
+    let data = reqwest::get("https://ucirvine.transloc.com/Services/JSONPRelay.svc/GetMapVehiclePoints?method=jQuery111104379215856036027_1712182850874&ApiKey=8882812681&_=1712182850877")
+        .await?
+        .text()
+        .await?;
+    return gtfs_rt_from_string(data);
+}
+
+fn gtfs_rt_from_string(data: String) -> Result<gtfs_rt::FeedMessage, Box<dyn std::error::Error + Send + Sync>> {
+    let data = parse_data(data)?;
+    let mut anteater_entities: Vec<FeedEntity> = Vec::new();
+    for i in 0..data.len() {
+        let vehicle = match data.get(i) {
+            Some(x) => x,
+            None => return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Invalid String"
+            ))),
+        };
+        anteater_entities.push(FeedEntity {
+            id: i.to_string(),
+            is_deleted: Some(false),
+            trip_update: None,
+            vehicle: Some(vehicle.get_vehicle_position()?),
+            alert: None,
+            shape: None,
+        });
+    }
     let anteater_gtfs = gtfs_rt::FeedMessage {
         header: FeedHeader {
             gtfs_realtime_version: "2.0".to_string(),
@@ -66,7 +42,7 @@ pub async fn get_gtfs_rt() -> Result<gtfs_rt::FeedMessage, Box<dyn std::error::E
                 .elapsed()?
                 .as_secs()),
         },
-        entity: anteater_entities,
+        entity: anteater_entities.to_owned(),
     };
     return Ok(anteater_gtfs);
 }
@@ -74,27 +50,78 @@ pub async fn get_gtfs_rt() -> Result<gtfs_rt::FeedMessage, Box<dyn std::error::E
 #[derive(Deserialize)]
 struct AnteaterExpressData {
     #[serde(rename = "GroundSpeed")]
-    ground_speed: f64,
+    ground_speed: f32,
     #[serde(rename = "Heading")]
-    heading: f64,
-    #[serde(rename = "IsDelayed")]
-    is_delayed: bool,
-    #[serde(rename = "IsOnRoute")]
-    is_on_route: bool,
+    heading: f32,
     #[serde(rename = "Latitude")]
-    latitude: f64,
+    latitude: f32,
     #[serde(rename = "Longitude")]
-    longitude: f64,
+    longitude: f32,
     #[serde(rename = "Name")]
     name: String,
     #[serde(rename = "RouteID")]
     route_id: i16,
-    #[serde(rename = "Seconds")]
-    seconds: i32,
-    #[serde(rename = "TimeStamp")]
-    time_stamp: String,
     #[serde(rename = "VehicleID")]
     vehicle_id: i16,
+}
+
+impl AnteaterExpressData {
+
+    fn get_carriage_details(&self) -> Result<CarriageDetails, Box<dyn Error + Send + Sync>> {
+        return Ok(CarriageDetails {
+            id: Some(self.vehicle_id.clone().to_string()),
+            label: Some(self.vehicle_id.clone().to_string()),
+            occupancy_status: None,
+            occupancy_percentage: None,
+            carriage_sequence: Some(1),
+        });
+    }
+
+    fn get_position(&self) -> Result<Position, Box<dyn Error + Send + Sync>> {
+        return Ok(Position {
+            latitude: self.latitude,
+            longitude: self.longitude,
+            bearing: Some(self.heading),
+            odometer: None,
+            speed: Some(self.ground_speed),
+        });
+    }
+
+    fn get_trip_descriptor(&self) -> Result<TripDescriptor, Box<dyn Error + Send + Sync>> {
+        return Ok(TripDescriptor {
+            trip_id: Some("".to_string()),
+            route_id: Some(self.route_id.clone().to_string()),
+            direction_id: Some(0),
+            start_time: None,
+            start_date: None,
+            schedule_relationship: None,
+        });
+    }
+
+    fn get_vehicle_descriptor(&self) -> Result<VehicleDescriptor, Box<dyn Error + Send + Sync>> {
+        return Ok(VehicleDescriptor {
+            id: Some(self.vehicle_id.to_string().clone()),
+            label: Some(self.name.clone()),
+            license_plate: None,
+            wheelchair_accessible: None,
+        })
+    }
+
+    fn get_vehicle_position(&self) -> Result<VehiclePosition, Box<dyn Error + Send + Sync>> {
+        return Ok(VehiclePosition {
+            trip: Some(self.get_trip_descriptor()?),
+            vehicle: Some(self.get_vehicle_descriptor()?),
+            position: Some(self.get_position()?),
+            current_stop_sequence: None, //fetch from gtfs
+            stop_id: None, //fetch from gtfs
+            current_status: None,
+            timestamp: None,
+            congestion_level: None,
+            occupancy_status: None,
+            occupancy_percentage: None,
+            multi_carriage_details: vec![self.get_carriage_details()?],
+        });
+    }
 }
 
 /*
@@ -268,7 +295,7 @@ mod tests {
         };
 
         assert_eq!(vehicle_0.ground_speed, 10.99901573793);
-        assert_eq!(vehicle_2.is_delayed, false);
+        assert_eq!(vehicle_2.vehicle_id, 10);
 
     }
 }
