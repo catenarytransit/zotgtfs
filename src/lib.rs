@@ -12,7 +12,6 @@ use std::time::SystemTime;
  */
 pub async fn get_gtfs_rt() -> Result<gtfs_rt::FeedMessage, Box<dyn std::error::Error + Send + Sync>>
 {
-    // test this let statement (i dont know how to test an async function)
     let data = reqwest::get("https://ucirvine.transloc.com/Services/JSONPRelay.svc/GetMapVehiclePoints?method=jQuery111104379215856036027_1712182850874&ApiKey=8882812681&_=1712182850877")
         .await?
         .text()
@@ -312,21 +311,21 @@ mod tests {
     }
 
     #[test]
-    fn get_gtfs_rt_no_data() {
+    fn gtfs_rt_from_string_no_data() {
         let example_data = create_no_data_string();
         let anteater_gtfs = gtfs_rt_from_string(example_data);
         assert!(anteater_gtfs.is_ok());
     }
 
     #[test]
-    fn get_gtfs_rt_is_ok() {
+    fn gtfs_rt_from_string_is_ok() {
         let example_data = create_example_string();
         let anteater_gtfs = gtfs_rt_from_string(example_data);
         assert!(anteater_gtfs.is_ok());
     }
 
     #[test]
-    fn get_gtfs_rt_same_length_as_express_data() {
+    fn gtfs_rt_from_string_same_length_as_express_data() {
         let example_data = create_example_string();
         let anteater_data = parse_data(example_data).unwrap();
         let example_data = create_example_string();
@@ -335,7 +334,7 @@ mod tests {
     }
 
     #[test]
-    fn get_gtfs_rt_is_correct() {
+    fn gtfs_rt_from_string_is_correct() {
         let example_data = create_example_string();
         let anteater_data = gtfs_rt_from_string(example_data).unwrap();
         let entity_1 = anteater_data.entity.get(1).unwrap();
@@ -374,6 +373,48 @@ mod tests {
                 .route_id
                 .unwrap(),
             String::from("4")
+        );
+    }
+
+    #[tokio::test]
+    async fn  get_gtfs_rt_is_ok() {
+        assert!(get_gtfs_rt().await.is_ok());
+    }
+
+    // This only passes when Anteater Express is in service (lol)
+    #[tokio::test]
+    async fn get_gtfs_rt_is_correct() {
+        let anteater_data = get_gtfs_rt().await.unwrap();
+        let entity_0 = anteater_data.entity.get(0).unwrap();
+        assert!(
+            entity_0
+                .clone()
+                .vehicle
+                .unwrap()
+                .position
+                .unwrap()
+                .bearing
+                .is_some()
+        );
+        assert!(
+            entity_0
+                .clone()
+                .vehicle
+                .unwrap()
+                .vehicle
+                .unwrap()
+                .id
+                .is_some()
+        );
+        assert!(
+            entity_0
+                .clone()
+                .vehicle
+                .unwrap()
+                .trip
+                .unwrap()
+                .route_id
+                .is_some()
         );
     }
 }
