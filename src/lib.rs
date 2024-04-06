@@ -4,12 +4,15 @@ use serde::Deserialize;
 use serde_json::from_str;
 use std::error::Error;
 use std::time::SystemTime;
+// Author(s): Jacob Whitecotton
+// Version: 4/6/2024
 
 /**
  * Fetches jsonp data from ucirvine's transit feed and converts it into gtfs_rt
  */
 pub async fn get_gtfs_rt() -> Result<gtfs_rt::FeedMessage, Box<dyn std::error::Error + Send + Sync>>
 {
+    // test this let statement (i dont know how to test an async function)
     let data = reqwest::get("https://ucirvine.transloc.com/Services/JSONPRelay.svc/GetMapVehiclePoints?method=jQuery111104379215856036027_1712182850874&ApiKey=8882812681&_=1712182850877")
         .await?
         .text()
