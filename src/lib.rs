@@ -277,12 +277,14 @@ mod tests {
     }
 
     fn create_no_data_string() -> String {
-        String::from("jQuery111104379215856036027_1712182850874(
+        String::from(
+            "jQuery111104379215856036027_1712182850874(
             [
                 {
                 }
             ] 
-        )")
+        )",
+        )
     }
 
     #[test]
@@ -377,7 +379,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn  get_gtfs_rt_is_ok() {
+    async fn get_gtfs_rt_is_ok() {
         assert!(get_gtfs_rt().await.is_ok());
     }
 
@@ -386,35 +388,29 @@ mod tests {
     async fn get_gtfs_rt_is_correct() {
         let anteater_data = get_gtfs_rt().await.unwrap();
         let entity_0 = anteater_data.entity.get(0).unwrap();
-        assert!(
-            entity_0
-                .clone()
-                .vehicle
-                .unwrap()
-                .position
-                .unwrap()
-                .bearing
-                .is_some()
-        );
-        assert!(
-            entity_0
-                .clone()
-                .vehicle
-                .unwrap()
-                .vehicle
-                .unwrap()
-                .id
-                .is_some()
-        );
-        assert!(
-            entity_0
-                .clone()
-                .vehicle
-                .unwrap()
-                .trip
-                .unwrap()
-                .route_id
-                .is_some()
-        );
+        assert!(entity_0
+            .clone()
+            .vehicle
+            .unwrap()
+            .position
+            .unwrap()
+            .bearing
+            .is_some());
+        assert!(entity_0
+            .clone()
+            .vehicle
+            .unwrap()
+            .vehicle
+            .unwrap()
+            .id
+            .is_some());
+        assert!(entity_0
+            .clone()
+            .vehicle
+            .unwrap()
+            .trip
+            .unwrap()
+            .route_id
+            .is_some());
     }
 }
