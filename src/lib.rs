@@ -28,14 +28,14 @@ fn gtfs_rt_from_string(
     let data = parse_data(data)?;
     // if data parsed is empty (at night for example) returns an empty gtfs_rt feed.
     if data.len() == 0 {
-        let emtpy_entity: Vec<gtfs_rt::FeedEntity> = Vec::new();
+        let empty_entity: Vec<gtfs_rt::FeedEntity> = Vec::new();
         let empty_data = gtfs_rt::FeedMessage {
             header: FeedHeader {
                 gtfs_realtime_version: String::from("2.0"),
                 incrementality: None,
                 timestamp: None,
             },
-            entity: emtpy_entity,
+            entity: empty_entity,
         };
         return Ok(empty_data);
     }
