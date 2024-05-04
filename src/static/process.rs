@@ -1,4 +1,5 @@
 use csv::Writer;
+use geo::GeodesicLength;
 use geo_types::geometry::LineString;
 use gtfs_structures;
 use polyline;
@@ -9,13 +10,10 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::fs::File;
 use std::io::Write;
-use geo::GeodesicLength;
 mod timeutil;
 use timeutil::string_h_m_to_u32;
 
 use geojson::GeoJson;
-
-
 
 #[derive(Deserialize, Debug, Serialize)]
 struct ScheduleManualInput {
@@ -24,13 +22,13 @@ struct ScheduleManualInput {
     timed: Vec<String>,
     files: Vec<ScheduleFiles>,
     extrasegments: Option<Vec<Vec<String>>>,
-    overrideshape: Option<String>
+    overrideshape: Option<String>,
 }
 
 #[derive(Copy, Clone)]
 struct ComparisonOfSegments {
     distance: f64,
-    index: usize
+    index: usize,
 }
 
 #[derive(Deserialize, Debug, Serialize)]
@@ -135,11 +133,11 @@ struct TranslocStops {
 }
 
 #[derive(Debug, Clone)]
-            struct Segmentinfo {
-                segment_id: String,
-                data: Vec<geo_types::geometry::Coord>,
-                length: f64
-            }
+struct Segmentinfo {
+    segment_id: String,
+    data: Vec<geo_types::geometry::Coord>,
+    length: f64,
+}
 
 fn hextorgb(x: String) -> rgb::RGB<u8> {
     let numberarray: Vec<char> = x.chars().collect();
@@ -266,7 +264,7 @@ async fn main() {
             .serialize(gtfs_structures::Stop {
                 id: stop.stop_id.clone(),
                 code: Some(stop.code.clone()),
-                name: stop.name.clone().replace(" Stop ",""),
+                name: stop.name.clone().replace(" Stop ", ""),
                 description: stop.description.clone(),
                 location_type: gtfs_structures::LocationType::StopPoint,
                 parent_station: None,
@@ -306,20 +304,28 @@ async fn main() {
 
         segments_map.insert(segment_id.clone(), segment_polyline.clone());
 
-       segment_polyline.coords().enumerate().for_each(|(i, coord)| 
-        segments_polyline_debug.serialize(debugpolyline {
-            lat: coord.y,
-            lng: coord.x,
-            segment_id: segment_id.clone(),
-            number: i
-        }).unwrap());
-
+        segment_polyline
+            .coords()
+            .enumerate()
+            .for_each(|(i, coord)| {
+                segments_polyline_debug
+                    .serialize(debugpolyline {
+                        lat: coord.y,
+                        lng: coord.x,
+                        segment_id: segment_id.clone(),
+                        number: i,
+                    })
+                    .unwrap()
+            });
     }
 
-    let segments_polyline_debug_csv = String::from_utf8(segments_polyline_debug.into_inner().unwrap()).unwrap();
+    let segments_polyline_debug_csv =
+        String::from_utf8(segments_polyline_debug.into_inner().unwrap()).unwrap();
     let mut segments_polyline_debug_file = File::create("segments_polyline_debug.csv").unwrap();
 
-    segments_polyline_debug_file.write_all(segments_polyline_debug_csv.as_bytes()).unwrap();
+    segments_polyline_debug_file
+        .write_all(segments_polyline_debug_csv.as_bytes())
+        .unwrap();
 
     println!("segments_map: {:?}", segments_map);
 
@@ -331,11 +337,11 @@ async fn main() {
         for route in routes_array {
             // println!("Route: {:?}", route);
 
-              //make the schedule here
+            //make the schedule here
 
-              let data_to_use = manualhashmap.get(&route.short_name).unwrap();
+            let data_to_use = manualhashmap.get(&route.short_name).unwrap();
 
-              println!("data_to_use: {:?}", data_to_use);
+            println!("data_to_use: {:?}", data_to_use);
 
             let mut vec_of_trips: Vec<gtfs_structures::RawTrip> = vec![];
             let mut vec_of_stop_times: Vec<gtfs_structures::RawStopTime> = vec![];
@@ -360,17 +366,17 @@ async fn main() {
                 })
                 .unwrap();
 
-                let mut arrayofsegments: Vec<Segmentinfo> = vec![];
+            let mut arrayofsegments: Vec<Segmentinfo> = vec![];
 
-                let mut sourcedata = route.segments.clone();
+            let mut sourcedata = route.segments.clone();
 
-                if data_to_use.extrasegments.is_some() {
-                 for x in data_to_use.extrasegments.clone().unwrap() {
+            if data_to_use.extrasegments.is_some() {
+                for x in data_to_use.extrasegments.clone().unwrap() {
                     println!("Joining extra {:?} to route {}", x, route.route_id);
-                     sourcedata.push(x.clone());
-                 }                   
+                    sourcedata.push(x.clone());
                 }
-        
+            }
+
             for segment_part in &sourcedata {
                 let segment_id = segment_part[0].clone();
                 //can be "forward" or "backward"
@@ -379,113 +385,140 @@ async fn main() {
                 let mut segment = segments_map.get(&segment_id).unwrap().clone().into_inner();
 
                 if segment_direction == "backward" {
-                    println!("reversing segment {} of route {}", segment_id, route.route_id);
+                    println!(
+                        "reversing segment {} of route {}",
+                        segment_id, route.route_id
+                    );
                     segment.reverse();
                 }
-                
-                let dataofthisseg = segment.clone().into_iter().collect::<Vec<geo_types::geometry::Coord>>();
+
+                let dataofthisseg = segment
+                    .clone()
+                    .into_iter()
+                    .collect::<Vec<geo_types::geometry::Coord>>();
                 //Lazy o(n^2) algo
                 arrayofsegments.push(Segmentinfo {
                     segment_id: segment_id.clone(),
                     data: dataofthisseg.clone(),
                     length: geo::geometry::LineString::from_iter(
-                        dataofthisseg.iter().map(|x| geo::geometry::Point::new(x.x, x.y))
+                        dataofthisseg
+                            .iter()
+                            .map(|x| geo::geometry::Point::new(x.x, x.y)),
                     )
-                        .geodesic_length()
+                    .geodesic_length(),
                 });
-              
-                 
             }
 
-               //sort array
-               arrayofsegments.sort_by(|a, b| bool::cmp(&(a.length < b.length), &(b.length < a.length)));
-                
-               println!("segments {:?}", arrayofsegments.iter().map(|x| x.length).collect::<Vec<f64>>());
+            //sort array
+            arrayofsegments
+                .sort_by(|a, b| bool::cmp(&(a.length < b.length), &(b.length < a.length)));
 
-               let mut segmentordered:LineString<f64> = LineString(vec![]);
+            println!(
+                "segments {:?}",
+                arrayofsegments
+                    .iter()
+                    .map(|x| x.length)
+                    .collect::<Vec<f64>>()
+            );
 
-               segmentordered = segmentordered.into_iter().chain(arrayofsegments[0].data.clone().into_iter()).collect::<LineString<f64>>();
+            let mut segmentordered: LineString<f64> = LineString(vec![]);
 
-               println!("segmentordered {:?}", segmentordered);
+            segmentordered = segmentordered
+                .into_iter()
+                .chain(arrayofsegments[0].data.clone().into_iter())
+                .collect::<LineString<f64>>();
 
-                  arrayofsegments.remove(0);
+            println!("segmentordered {:?}", segmentordered);
 
-               while arrayofsegments.len() > 0 {
-                   
-                        let mut closest_end_to_my_start: Option<ComparisonOfSegments> = None;
-                        let mut closest_start_to_my_end: Option<ComparisonOfSegments> = None;
+            arrayofsegments.remove(0);
 
-                        let coordsofmyself:Vec<geo_types::Coord> = segmentordered.clone().into_iter().map(|coord| coord).collect::<Vec<geo_types::Coord>>();
+            while arrayofsegments.len() > 0 {
+                let mut closest_end_to_my_start: Option<ComparisonOfSegments> = None;
+                let mut closest_start_to_my_end: Option<ComparisonOfSegments> = None;
 
-                        let my_start = coordsofmyself[0].clone();
-                        let my_end = segmentordered[coordsofmyself.len() - 1].clone();
+                let coordsofmyself: Vec<geo_types::Coord> = segmentordered
+                    .clone()
+                    .into_iter()
+                    .map(|coord| coord)
+                    .collect::<Vec<geo_types::Coord>>();
 
-                        
-                       // println!("my start {:?}", my_start);
+                let my_start = coordsofmyself[0].clone();
+                let my_end = segmentordered[coordsofmyself.len() - 1].clone();
 
-                        for (index, segment) in arrayofsegments.iter().enumerate() {
-                            let start_partner = segment.data[0].clone();
-                            let end_partner = segment.data[segment.data.len() - 1].clone();
+                // println!("my start {:?}", my_start);
 
-                            //println!("their end {:?}", end_partner);
-                            let my_start_to_their_end_distance = vincenty_core::distance_from_coords(
-                                &my_start,
-                                &end_partner
-                            ).unwrap();
+                for (index, segment) in arrayofsegments.iter().enumerate() {
+                    let start_partner = segment.data[0].clone();
+                    let end_partner = segment.data[segment.data.len() - 1].clone();
 
-                            let my_end_to_their_start_distance = vincenty_core::distance_from_coords(
-                                &my_end,
-                                &start_partner
-                            ).unwrap();
+                    //println!("their end {:?}", end_partner);
+                    let my_start_to_their_end_distance =
+                        vincenty_core::distance_from_coords(&my_start, &end_partner).unwrap();
 
-                         
-                                if (closest_end_to_my_start.is_none() || my_start_to_their_end_distance < closest_end_to_my_start.unwrap().distance) {
-                                    closest_end_to_my_start = Some(ComparisonOfSegments {
-                                        distance: my_start_to_their_end_distance,
-                                        index: index
-                                    });
-                                }
-    
-                                if (closest_start_to_my_end.is_none() || my_end_to_their_start_distance < closest_start_to_my_end.unwrap().distance) {
-                                    closest_start_to_my_end = Some(ComparisonOfSegments {
-                                        distance: my_end_to_their_start_distance,
-                                        index: index
-                                    });
-                                }
+                    let my_end_to_their_start_distance =
+                        vincenty_core::distance_from_coords(&my_end, &start_partner).unwrap();
 
-                            
-                        }
+                    if (closest_end_to_my_start.is_none()
+                        || my_start_to_their_end_distance
+                            < closest_end_to_my_start.unwrap().distance)
+                    {
+                        closest_end_to_my_start = Some(ComparisonOfSegments {
+                            distance: my_start_to_their_end_distance,
+                            index: index,
+                        });
+                    }
 
-                        let mut index_to_remove :Option<usize> = None;
+                    if (closest_start_to_my_end.is_none()
+                        || my_end_to_their_start_distance
+                            < closest_start_to_my_end.unwrap().distance)
+                    {
+                        closest_start_to_my_end = Some(ComparisonOfSegments {
+                            distance: my_end_to_their_start_distance,
+                            index: index,
+                        });
+                    }
+                }
 
-                            if closest_end_to_my_start.unwrap().distance < closest_start_to_my_end.unwrap().distance {
-                                //join partner + me
-                                segmentordered = arrayofsegments[closest_end_to_my_start.unwrap().index].data.clone().into_iter().chain(segmentordered.into_iter()).collect::<LineString<f64>>();
+                let mut index_to_remove: Option<usize> = None;
 
-                                //drop the segment
-                               index_to_remove = Some(closest_end_to_my_start.unwrap().index);
-                            } else {
-                                //join me + partner
+                if closest_end_to_my_start.unwrap().distance
+                    < closest_start_to_my_end.unwrap().distance
+                {
+                    //join partner + me
+                    segmentordered = arrayofsegments[closest_end_to_my_start.unwrap().index]
+                        .data
+                        .clone()
+                        .into_iter()
+                        .chain(segmentordered.into_iter())
+                        .collect::<LineString<f64>>();
 
-                                segmentordered = segmentordered.into_iter().chain(arrayofsegments[closest_start_to_my_end.unwrap().index].data.clone().into_iter()).collect::<LineString<f64>>();
+                    //drop the segment
+                    index_to_remove = Some(closest_end_to_my_start.unwrap().index);
+                } else {
+                    //join me + partner
 
-                                //drop the segment
-                                index_to_remove = Some(closest_start_to_my_end.unwrap().index);
-                            }
+                    segmentordered = segmentordered
+                        .into_iter()
+                        .chain(
+                            arrayofsegments[closest_start_to_my_end.unwrap().index]
+                                .data
+                                .clone()
+                                .into_iter(),
+                        )
+                        .collect::<LineString<f64>>();
 
-                            if index_to_remove.is_some() {
-                                arrayofsegments.remove(index_to_remove.unwrap());
-                            }
-                   
-               }
+                    //drop the segment
+                    index_to_remove = Some(closest_start_to_my_end.unwrap().index);
+                }
 
-               
+                if index_to_remove.is_some() {
+                    arrayofsegments.remove(index_to_remove.unwrap());
+                }
+            }
 
             //now they have to be seperated and put into the shapes list
 
             if data_to_use.overrideshape.is_some() {
-
-
                 let file = File::open(data_to_use.overrideshape.clone().unwrap()).unwrap();
 
                 let geojson = GeoJson::from_reader(file).unwrap();
@@ -511,7 +544,13 @@ async fn main() {
                 };
 
                 if linestring.is_some() {
-                    segmentordered = LineString::from(linestring.unwrap().into_iter().map(|x| geo_types::Point::new(x[0], x[1])).collect::<Vec<geo_types::Point<f64>>>());
+                    segmentordered = LineString::from(
+                        linestring
+                            .unwrap()
+                            .into_iter()
+                            .map(|x| geo_types::Point::new(x[0], x[1]))
+                            .collect::<Vec<geo_types::Point<f64>>>(),
+                    );
                 }
             }
 
@@ -532,8 +571,6 @@ async fn main() {
 
                 seqcount = seqcount + 1;
             }
-
-          
 
             for file in data_to_use.files.iter() {
                 // let scheduletimes = fs::read_to_string(format!("schedules/{}", file.name).as_str()).unwrap().as_str();
@@ -566,15 +603,13 @@ async fn main() {
                         arrivals: Option<u32>,
                         departures: Option<u32>,
                         enabled: bool,
-                        boardingsallowed: bool
+                        boardingsallowed: bool,
                     }
 
                     let mut tripnumber = 1;
 
                     //for each row
                     for row in vecofrows {
-                        
-
                         let mut scheduleforthistime: Vec<String> = vec![];
 
                         for i in 2..row.len() {
@@ -603,38 +638,42 @@ async fn main() {
 
                         println!("repeat {:?} times", repeatnumberoftimes);
 
-                      
-                          /*
-                            rowvec.push(Stoptimepre {
-                                stop_id: stopcode_to_stopid
-                                    .get(&routelooppoint.clone())
-                                    .unwrap()
-                                    .clone(),
-                                stop_code: routelooppoint.clone(),
-                                timed: data_to_use.timed.contains(&routelooppoint.clone()),
-                                arrivals: None,
-                                departures: None,
-                                enabled: true,
-                            }); */
+                        /*
+                        rowvec.push(Stoptimepre {
+                            stop_id: stopcode_to_stopid
+                                .get(&routelooppoint.clone())
+                                .unwrap()
+                                .clone(),
+                            stop_code: routelooppoint.clone(),
+                            timed: data_to_use.timed.contains(&routelooppoint.clone()),
+                            arrivals: None,
+                            departures: None,
+                            enabled: true,
+                        }); */
 
-                            let firsttimedindex = scheduleforthistime.iter().position(|x| x.contains(":")).unwrap();
-                            let initialtime = string_h_m_to_u32(scheduleforthistime[firsttimedindex].clone());
-                            let mut offset = 0;
+                        let firsttimedindex = scheduleforthistime
+                            .iter()
+                            .position(|x| x.contains(":"))
+                            .unwrap();
+                        let initialtime =
+                            string_h_m_to_u32(scheduleforthistime[firsttimedindex].clone());
+                        let mut offset = 0;
 
-                           for eachtrip in 0..repeatnumberoftimes {
+                        for eachtrip in 0..repeatnumberoftimes {
                             //inclusive, cancel everything from 0 until
                             let mut cancelindexpre: Option<usize> = None;
-                            let mut canceldeparturesindex:Option<usize> = None;
+                            let mut canceldeparturesindex: Option<usize> = None;
 
                             let mut rowvec: Vec<Stoptimepre> = vec![];
                             //process each stop along this trip
-                            let whichintervaltouse = repeatinterval[eachtrip as usize % repeatinterval.len() as usize];
+                            let whichintervaltouse =
+                                repeatinterval[eachtrip as usize % repeatinterval.len() as usize];
 
                             let mut stopnumber = 0;
 
-                            
-
-                            for (routeordercounter, routelooppoint) in data_to_use.routeorder.iter().enumerate() {
+                            for (routeordercounter, routelooppoint) in
+                                data_to_use.routeorder.iter().enumerate()
+                            {
                                 let mut calcboardingsallowed = true;
 
                                 if routeordercounter == data_to_use.routeorder.len() - 1 {
@@ -655,14 +694,17 @@ async fn main() {
                                     arrivals: None,
                                     departures: None,
                                     enabled: true,
-                                    boardingsallowed: calcboardingsallowed
+                                    boardingsallowed: calcboardingsallowed,
                                 });
 
                                 //use scheduleforthistime to get the initial times
                                 let mut departuretime = None;
 
                                 if headervec.contains(&routelooppoint.clone()) {
-                                    let index = headervec.iter().position(|r| r.as_str() == routelooppoint.clone().as_str()).unwrap();
+                                    let index = headervec
+                                        .iter()
+                                        .position(|r| r.as_str() == routelooppoint.clone().as_str())
+                                        .unwrap();
 
                                     let stringofdeparturetime = scheduleforthistime[index].clone();
 
@@ -670,15 +712,19 @@ async fn main() {
                                         departuretime = None;
                                     } else {
                                         if stringofdeparturetime.contains(":") {
-                                            departuretime = Some(string_h_m_to_u32(
-                                                stringofdeparturetime.clone(),
-                                            ) + offset);
+                                            departuretime = Some(
+                                                string_h_m_to_u32(stringofdeparturetime.clone())
+                                                    + offset,
+                                            );
                                         }
                                     }
 
                                     if stringofdeparturetime.contains("*") {
                                         cancelindexpre = Some(stopnumber - 1);
-                                        println!("Cancelled all service 0 to {}", cancelindexpre.unwrap())
+                                        println!(
+                                            "Cancelled all service 0 to {}",
+                                            cancelindexpre.unwrap()
+                                        )
                                     }
 
                                     if stringofdeparturetime.contains("$") {
@@ -706,11 +752,9 @@ async fn main() {
 
                                 rowvec[stopnumber].departures = departuretime;
 
-                          
-
                                 stopnumber = stopnumber + 1;
                             }
-                           
+
                             offset = offset + whichintervaltouse as u32;
                             tripnumber = tripnumber + 1;
 
@@ -722,8 +766,9 @@ async fn main() {
                                 true => "monthurs",
                                 false => "fri",
                             };
-                            
-                            let  trip_id = format!("{}-{}-{}", route.short_name, tripnumber, schedulename);
+
+                            let trip_id =
+                                format!("{}-{}-{}", route.short_name, tripnumber, schedulename);
 
                             let rawtripgtfs = gtfs_structures::RawTrip {
                                 id: trip_id.clone(),
@@ -735,7 +780,7 @@ async fn main() {
                                 trip_short_name: None,
                                 shape_id: Some(this_routes_shape_id.clone()),
                                 bikes_allowed: gtfs_structures::BikesAllowedType::AtLeastOneBike,
-                                wheelchair_accessible: gtfs_structures::Availability::Available
+                                wheelchair_accessible: gtfs_structures::Availability::Available,
                             };
 
                             tripswriter.serialize(rawtripgtfs).unwrap();
@@ -752,7 +797,9 @@ async fn main() {
                                         stop_headsign: None,
                                         pickup_type: match stoptimefinal.boardingsallowed {
                                             true => gtfs_structures::PickupDropOffType::Regular,
-                                            false => gtfs_structures::PickupDropOffType::NotAvailable,
+                                            false => {
+                                                gtfs_structures::PickupDropOffType::NotAvailable
+                                            }
                                         },
                                         drop_off_type: gtfs_structures::PickupDropOffType::Regular,
                                         shape_dist_traveled: None,
@@ -760,17 +807,18 @@ async fn main() {
                                             true => gtfs_structures::TimepointType::Exact,
                                             false => gtfs_structures::TimepointType::Approximate,
                                         },
-                                        continuous_pickup: gtfs_structures::ContinuousPickupDropOff::NotAvailable,
-                                        continuous_drop_off: gtfs_structures::ContinuousPickupDropOff::NotAvailable,
+                                        continuous_pickup:
+                                            gtfs_structures::ContinuousPickupDropOff::NotAvailable,
+                                        continuous_drop_off:
+                                            gtfs_structures::ContinuousPickupDropOff::NotAvailable,
                                     };
 
                                     stoptimeswriter.serialize(rawstoptimegtfs).unwrap();
-                                    
-                                stopcounterfinal = stopcounterfinal + 1;
-                                }
 
+                                    stopcounterfinal = stopcounterfinal + 1;
+                                }
                             }
-                           }
+                        }
                     }
                 }
             }
@@ -799,31 +847,35 @@ async fn main() {
 
     let mut calendarwriter = Writer::from_writer(vec![]);
 
-    calendarwriter.serialize(gtfs_structures::Calendar {
-        id: String::from("monthurs"),
-        monday: true,
-        tuesday: true,
-        wednesday: true,
-        thursday: true,
-        friday: false,
-        saturday: false,
-        sunday: false,
-        start_date:  chrono::naive::NaiveDate::from_ymd_opt(2024,04,01).unwrap(),
-        end_date: chrono::naive::NaiveDate::from_ymd_opt(2023,06,14).unwrap(),
-    }).unwrap();
+    calendarwriter
+        .serialize(gtfs_structures::Calendar {
+            id: String::from("monthurs"),
+            monday: true,
+            tuesday: true,
+            wednesday: true,
+            thursday: true,
+            friday: false,
+            saturday: false,
+            sunday: false,
+            start_date: chrono::naive::NaiveDate::from_ymd_opt(2024, 04, 01).unwrap(),
+            end_date: chrono::naive::NaiveDate::from_ymd_opt(2023, 06, 14).unwrap(),
+        })
+        .unwrap();
 
-    calendarwriter.serialize(gtfs_structures::Calendar {
-        id: String::from("fri"),
-        monday: false,
-        tuesday: false,
-        wednesday: false,
-        thursday: false,
-        friday: true,
-        saturday: false,
-        sunday: false,
-        start_date:  chrono::naive::NaiveDate::from_ymd_opt(2024,04,01).unwrap(),
-        end_date: chrono::naive::NaiveDate::from_ymd_opt(2024,06,14).unwrap(),
-    }).unwrap();
+    calendarwriter
+        .serialize(gtfs_structures::Calendar {
+            id: String::from("fri"),
+            monday: false,
+            tuesday: false,
+            wednesday: false,
+            thursday: false,
+            friday: true,
+            saturday: false,
+            sunday: false,
+            start_date: chrono::naive::NaiveDate::from_ymd_opt(2024, 04, 01).unwrap(),
+            end_date: chrono::naive::NaiveDate::from_ymd_opt(2024, 06, 14).unwrap(),
+        })
+        .unwrap();
 
     let calendar_csv = String::from_utf8(calendarwriter.into_inner().unwrap()).unwrap();
     let mut calendarfile = File::create("anteater_gtfs/calendar.txt").unwrap();
@@ -834,15 +886,18 @@ async fn main() {
 
     let cancellations = [
         //Memorial day
-        ((2024,05,27), "monthurs")
+        ((2024, 05, 27), "monthurs"),
     ];
 
     for cancel in cancellations {
-        calendardateswriter.serialize(gtfs_structures::CalendarDate {
-            service_id: String::from(cancel.1),
-            date: chrono::naive::NaiveDate::from_ymd_opt(cancel.0.0,cancel.0.1, cancel.0.2).unwrap(),
-            exception_type: gtfs_structures::Exception::Deleted,
-        }).unwrap();
+        calendardateswriter
+            .serialize(gtfs_structures::CalendarDate {
+                service_id: String::from(cancel.1),
+                date: chrono::naive::NaiveDate::from_ymd_opt(cancel.0 .0, cancel.0 .1, cancel.0 .2)
+                    .unwrap(),
+                exception_type: gtfs_structures::Exception::Deleted,
+            })
+            .unwrap();
     }
 
     //write now
@@ -850,27 +905,29 @@ async fn main() {
     let calendardates_csv = String::from_utf8(calendardateswriter.into_inner().unwrap()).unwrap();
     let mut calendardatesfile = File::create("anteater_gtfs/calendar_dates.txt").unwrap();
 
-    calendardatesfile.write_all(calendardates_csv.as_bytes()).unwrap();
+    calendardatesfile
+        .write_all(calendardates_csv.as_bytes())
+        .unwrap();
 
     //now validate it
 
-    let gtfs = gtfs_structures::GtfsReader::default()
-   .read("anteater_gtfs");
+    let gtfs = gtfs_structures::GtfsReader::default().read("anteater_gtfs");
 
-   match gtfs {
-         Ok(gtfs) => {
-              println!("Valid");
-         },
-         Err(e) => {
-              println!("error: {:?}", e);
-         }
-   }
+    match gtfs {
+        Ok(gtfs) => {
+            println!("Valid");
+        }
+        Err(e) => {
+            println!("error: {:?}", e);
+        }
+    }
 }
 
 fn cleanupstring(x: String) -> String {
-    return x.replace("!","").replace("#", "")
-    .replace("*","").replace("$", "").replace(" ", "");
+    return x
+        .replace("!", "")
+        .replace("#", "")
+        .replace("*", "")
+        .replace("$", "")
+        .replace(" ", "");
 }
-
-
-
