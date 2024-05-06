@@ -16,7 +16,7 @@ pub async fn get_gtfs_rt() -> Result<gtfs_rt::FeedMessage, Box<dyn std::error::E
         .await?
         .text()
         .await?;
-    return gtfs_rt_from_string(data);
+    gtfs_rt_from_string(data)
 }
 
 /**
@@ -54,7 +54,7 @@ fn gtfs_rt_from_string(
             id: i.to_string(),
             is_deleted: Some(false),
             trip_update: None,
-            vehicle: Some(vehicle.get_vehicle_position()?),
+            vehicle: Some(vehicle.get_vehicle_position()),
             alert: None,
             shape: None,
             stop: None,
@@ -104,34 +104,34 @@ impl AnteaterExpressData {
      * gtfs_data assumes all vehicles are non-articulated (as
      * of now they are not/no carriage details are provided).
      */
-    fn get_carriage_details(&self) -> Result<CarriageDetails, Box<dyn Error + Send + Sync>> {
-        return Ok(CarriageDetails {
+    fn get_carriage_details(&self) -> CarriageDetails {
+        CarriageDetails {
             id: Some(self.vehicle_id.clone().to_string()),
             label: Some(self.vehicle_id.clone().to_string()),
             occupancy_status: None,
             occupancy_percentage: None,
             carriage_sequence: Some(1),
-        });
+        }
     }
 
     /**
      * Generates a gtfs_rt::Position based on self's data.
      */
-    fn get_position(&self) -> Result<Position, Box<dyn Error + Send + Sync>> {
-        return Ok(Position {
+    fn get_position(&self) -> Position {
+        Position {
             latitude: self.latitude,
             longitude: self.longitude,
             bearing: Some(self.heading),
             odometer: None,
             speed: Some((self.ground_speed as f32 * (1.0 / 3.6)) as f32),
-        });
+        }
     }
 
     /**
      * Generates a gtfs_rt::TripDescriptor based on self's data.
      */
-    fn get_trip_descriptor(&self) -> Result<TripDescriptor, Box<dyn Error + Send + Sync>> {
-        return Ok(TripDescriptor {
+    fn get_trip_descriptor(&self) -> TripDescriptor {
+        TripDescriptor {
             trip_id: Some(String::from("")),
             route_id: Some(self.route_id.clone().to_string()),
             direction_id: Some(0),
@@ -139,31 +139,31 @@ impl AnteaterExpressData {
             start_date: None,
             schedule_relationship: None,
             modified_trip: None,
-        });
+        }
     }
 
     /**
      * Generates a gtfs_rt::VehicleDescriptor based on self's
      * data.
      */
-    fn get_vehicle_descriptor(&self) -> Result<VehicleDescriptor, Box<dyn Error + Send + Sync>> {
-        return Ok(VehicleDescriptor {
+    fn get_vehicle_descriptor(&self) -> VehicleDescriptor {
+        VehicleDescriptor {
             id: Some(self.vehicle_id.to_string().clone()),
             label: Some(self.name.clone()),
             license_plate: None,
             wheelchair_accessible: None,
-        });
+        }
     }
 
     /**
      * Generates a gtfs_rt::VehiclePosition based on self's
      * data and the impl functions above.
      */
-    fn get_vehicle_position(&self) -> Result<VehiclePosition, Box<dyn Error + Send + Sync>> {
-        return Ok(VehiclePosition {
-            trip: Some(self.get_trip_descriptor()?),
-            vehicle: Some(self.get_vehicle_descriptor()?),
-            position: Some(self.get_position()?),
+    fn get_vehicle_position(&self) -> VehiclePosition {
+        VehiclePosition {
+            trip: Some(self.get_trip_descriptor()),
+            vehicle: Some(self.get_vehicle_descriptor()),
+            position: Some(self.get_position()),
             current_stop_sequence: None, //fetch from gtfs
             stop_id: None,               //fetch from gtfs
             current_status: None,
@@ -171,8 +171,8 @@ impl AnteaterExpressData {
             congestion_level: None,
             occupancy_status: None,
             occupancy_percentage: None,
-            multi_carriage_details: vec![self.get_carriage_details()?], //Length of 1 since anteater express does not provide carriage details
-        });
+            multi_carriage_details: vec![self.get_carriage_details()], //Length of 1 since anteater express does not provide carriage details
+        }
     }
 }
 
