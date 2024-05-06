@@ -412,5 +412,7 @@ mod tests {
             .unwrap()
             .route_id
             .is_some());
+
+        println!("{:?}", anteater_data);
     }
 }
