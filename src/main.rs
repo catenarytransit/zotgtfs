@@ -19,10 +19,6 @@ extern crate rand;
 use crate::rand::prelude::SliceRandom;
 use rand::Rng;
 
-use redis::Commands;
-use redis::RedisError;
-use redis::{Client as RedisClient, RedisResult};
-
 use std::time::{Duration, SystemTime};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -475,6 +471,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         start_time: None,
                         start_date: Some(chrono::Utc::now().format("%Y%m%d").to_string()),
                         schedule_relationship: None,
+                        modified_trip: None
                     };
 
                     let vehicleposition = gtfs_rt::FeedEntity {
@@ -506,6 +503,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         is_deleted: None,
                         trip_update: None,
                         alert: None,
+                        stop: None,
+                        trip_modifications: None
                     };
 
                     let this_trip_length = std::cmp::min(
@@ -566,6 +565,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .map(|x| *x as i32),
                         }),
                         alert: None,
+                        stop: None,
+                        trip_modifications: None
                     };
 
                     listoftripupdates.push(tripupdate);
@@ -601,68 +602,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
             entity: listoftripupdates,
         };
-
-        // println!("Encoded to protobuf! {:#?}", entire_feed_vehicles);
-
-        //let entire_feed_vehicles = entire_feed_vehicles.encode_to_vec();
-
-        let buf: Vec<u8> = entire_feed_vehicles.encode_to_vec();
-        let trip_buf: Vec<u8> = trip_feed.encode_to_vec();
-
-        let _: () = con
-            .set(
-                format!("gtfsrt|{}|{}", "f-anteaterexpress~rt", "vehicles"),
-                &buf,
-            )
-            .unwrap();
-
-        let _: () = con
-            .set(
-                format!("gtfsrt|{}|{}", "f-anteaterexpress~rt", "trips"),
-                &trip_buf,
-            )
-            .unwrap();
-
-        let _: () = con
-            .set(
-                format!("gtfsrttime|{}|{}", "f-anteaterexpress~rt", "vehicles"),
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis()
-                    .to_string(),
-            )
-            .unwrap();
-
-        let _: () = con
-            .set(
-                format!("gtfsrttime|{}|{}", "f-anteaterexpress~rt", "trips"),
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis()
-                    .to_string(),
-            )
-            .unwrap();
-
-        let _: () = con
-            .set(
-                format!("gtfsrtexists|{}", "f-anteaterexpress~rt"),
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis()
-                    .to_string(),
-            )
-            .unwrap();
-
-        println!("Inserted into Redis!");
-
-        let time_left = 1000 as f64 - (beginning.elapsed().as_millis() as f64);
-
-        if time_left > 0.0 {
-            println!("Sleeping for {} milliseconds", time_left);
-            std::thread::sleep(std::time::Duration::from_millis(time_left as u64));
-        }
     }
 }

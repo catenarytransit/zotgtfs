@@ -1,4 +1,4 @@
-[package]
+[library]
 name = "zotgtfs"
 license = "AGPL-3.0"
 version = "0.3.0"
