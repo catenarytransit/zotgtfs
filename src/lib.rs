@@ -123,7 +123,7 @@ impl AnteaterExpressData {
             longitude: self.longitude,
             bearing: Some(self.heading),
             odometer: None,
-            speed: Some((bus.ground_speed.unwrap_or(0.0) as f32 * (1.0 / 3.6)) as f32),
+            speed: Some((self.ground_speed as f32 * (1.0 / 3.6)) as f32),
         });
     }
 
