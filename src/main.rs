@@ -160,9 +160,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // curl https://transloc-api-1-2.p.rapidapi.com/vehicles.json?agencies=1039
     //-H "X-Mashape-Key: b0ebd9e8a5msh5aca234d74ce282p1737bbjsnddd18d7b9365"
 
-    let redisclient = RedisClient::open("redis://127.0.0.1:6379/").unwrap();
-    let mut con = redisclient.get_connection().unwrap();
-
     let gtfs = gtfs_structures::GtfsReader::default()
         .read("anteater_gtfs")
         .unwrap();
