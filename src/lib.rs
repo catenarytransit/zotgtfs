@@ -57,6 +57,8 @@ fn gtfs_rt_from_string(
             vehicle: Some(vehicle.get_vehicle_position()?),
             alert: None,
             shape: None,
+            stop: None,
+            trip_modifications: None
         });
     }
     let anteater_gtfs = gtfs_rt::FeedMessage {
@@ -136,6 +138,7 @@ impl AnteaterExpressData {
             start_time: None,
             start_date: None,
             schedule_relationship: None,
+            modified_trip: None,
         });
     }
 
