@@ -3,8 +3,10 @@ use gtfs_rt::*;
 use serde::Deserialize;
 use serde_json::from_str;
 use std::error::Error;
+use chrono::Datelike;
 use std::time::SystemTime;
-// Author(s): Jacob Whitecotton
+use chrono_tz::Tz;
+// Author(s): Jacob Whitecotton, Kyler Chin
 // Version: 4/6/2024
 
 /**
@@ -17,6 +19,45 @@ pub async fn get_gtfs_rt() -> Result<gtfs_rt::FeedMessage, Box<dyn std::error::E
         .text()
         .await?;
     gtfs_rt_from_string(data)
+}
+
+pub fn get_trip_id(route_id: i32) -> Option<String> {
+    // is today friday in America/Los_Angeles?
+
+    let current_time = chrono::Utc::now();
+
+    let tz: Tz = "America/Los_Angeles".parse().unwrap();
+
+    // Convert this to the Los Angeles timezone.
+
+    let current_time_la = current_time.with_timezone(&tz);
+
+    let is_friday = current_time_la.weekday() == chrono::Weekday::Fri;
+
+    let trip_id_potential = match is_friday {
+        true => {
+            match route_id {
+                2 => Some(9520676),
+                3 => Some(9520695),
+                1 => Some(9520728),
+                125516 => Some(9520708),
+                125515 => Some(9520687),
+                _ => None
+            }
+        },
+        false => {
+            match route_id {
+                2 => Some(9520674),
+                3 => Some(9520690),
+                1 => Some(9520732),
+                125516 => Some(9520706),
+                125515 => Some(9520748),
+                _ => None
+            }
+        }
+    };
+
+    trip_id_potential.map(|x| x.to_string())
 }
 
 /**
@@ -88,7 +129,7 @@ struct AnteaterExpressData {
     #[serde(rename = "Name")]
     name: String,
     #[serde(rename = "RouteID")]
-    route_id: i16,
+    route_id: i32,
     #[serde(rename = "VehicleID")]
     vehicle_id: i16,
 }
@@ -107,7 +148,7 @@ impl AnteaterExpressData {
     fn get_carriage_details(&self) -> CarriageDetails {
         CarriageDetails {
             id: Some(self.vehicle_id.clone().to_string()),
-            label: Some(self.vehicle_id.clone().to_string()),
+            label: label: Some(self.name.clone()),
             occupancy_status: None,
             occupancy_percentage: None,
             carriage_sequence: Some(1),
@@ -132,7 +173,10 @@ impl AnteaterExpressData {
      */
     fn get_trip_descriptor(&self) -> TripDescriptor {
         TripDescriptor {
-            trip_id: Some(String::from("")),
+            trip_id: match self.route_id {
+                0 => None,
+                _ => get_trip_id(self.route_id),
+            },
             route_id: Some(self.route_id.to_string()),
             direction_id: Some(0),
             start_time: None,
