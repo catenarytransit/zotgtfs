@@ -148,7 +148,7 @@ impl AnteaterExpressData {
     fn get_carriage_details(&self) -> CarriageDetails {
         CarriageDetails {
             id: Some(self.vehicle_id.clone().to_string()),
-            label: label: Some(self.name.clone()),
+            label: Some(self.name.clone()),
             occupancy_status: None,
             occupancy_percentage: None,
             carriage_sequence: Some(1),
