@@ -468,7 +468,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         start_time: None,
                         start_date: Some(chrono::Utc::now().format("%Y%m%d").to_string()),
                         schedule_relationship: None,
-                        modified_trip: None
+                        modified_trip: None,
                     };
 
                     let vehicleposition = gtfs_rt::FeedEntity {
@@ -501,7 +501,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         trip_update: None,
                         alert: None,
                         stop: None,
-                        trip_modifications: None
+                        trip_modifications: None,
                     };
 
                     let this_trip_length = std::cmp::min(
@@ -563,7 +563,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }),
                         alert: None,
                         stop: None,
-                        trip_modifications: None
+                        trip_modifications: None,
                     };
 
                     listoftripupdates.push(tripupdate);

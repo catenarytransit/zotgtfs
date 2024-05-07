@@ -58,7 +58,7 @@ fn gtfs_rt_from_string(
             alert: None,
             shape: None,
             stop: None,
-            trip_modifications: None
+            trip_modifications: None,
         });
     }
     let anteater_gtfs = gtfs_rt::FeedMessage {
@@ -133,7 +133,7 @@ impl AnteaterExpressData {
     fn get_trip_descriptor(&self) -> TripDescriptor {
         TripDescriptor {
             trip_id: Some(String::from("")),
-            route_id: Some(self.route_id.clone().to_string()),
+            route_id: Some(self.route_id.to_string()),
             direction_id: Some(0),
             start_time: None,
             start_date: None,
