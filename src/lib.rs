@@ -57,6 +57,8 @@ pub fn get_trip_id(route_id: i32) -> Option<String> {
         }
     };
 
+    println!("Potential trip id {:?} for route {}", trip_id_potential, route_id);
+
     trip_id_potential.map(|x| x.to_string())
 }
 
@@ -172,12 +174,26 @@ impl AnteaterExpressData {
      * Generates a gtfs_rt::TripDescriptor based on self's data.
      */
     fn get_trip_descriptor(&self) -> TripDescriptor {
+        let actual_route_id:i32 = match self.route_id {
+            //A LINE
+            7 => 3,
+            //E LINE
+            8 => 125515,
+            //H LINE
+            4 => 125516,
+            // M LINE
+            5 => 2,
+            // N LINE
+            6 => 1,
+            _ => self.route_id,
+        };
+
         TripDescriptor {
             trip_id: match self.route_id {
                 0 => None,
-                _ => get_trip_id(self.route_id),
+                _ => get_trip_id(actual_route_id),
             },
-            route_id: Some(self.route_id.to_string()),
+            route_id: Some(actual_route_id.to_string()),
             direction_id: Some(0),
             start_time: None,
             start_date: None,
