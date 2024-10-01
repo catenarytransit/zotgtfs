@@ -1,5 +1,5 @@
-use gtfs_rt::vehicle_position::*;
-use gtfs_rt::*;
+use gtfs_realtime::vehicle_position::*;
+use gtfs_realtime::*;
 use serde::Deserialize;
 use serde_json::from_str;
 use std::error::Error;
@@ -12,9 +12,9 @@ use chrono_tz::Tz;
 /**
  * Fetches jsonp data from ucirvine's transit feed and converts it into gtfs_rt
  */
-pub async fn get_gtfs_rt() -> Result<gtfs_rt::FeedMessage, Box<dyn std::error::Error + Send + Sync>>
+pub async fn get_gtfs_rt() -> Result<gtfs_realtime::FeedMessage, Box<dyn std::error::Error + Send + Sync>>
 {
-    let data = reqwest::get("https://ucirvine.transloc.com/Services/JSONPRelay.svc/GetMapVehiclePoints?method=jQuery111104379215856036027_1712182850874&ApiKey=8882812681&_=1712182850877")
+    let data = reqwest::get("https://ucirvine.transloc.com/Services/JSONPRelay.svc/GetMapVehiclePoints?method=jQuery111104379215856036027_1712182850874&_=1712182850877")
         .await?
         .text()
         .await?;
@@ -67,12 +67,12 @@ pub fn get_trip_id(route_id: i32) -> Option<String> {
  */
 fn gtfs_rt_from_string(
     data: String,
-) -> Result<gtfs_rt::FeedMessage, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<gtfs_realtime::FeedMessage, Box<dyn std::error::Error + Send + Sync>> {
     let data = parse_data(data)?;
     // if data parsed is empty (at night for example) returns an empty gtfs_rt feed.
     if data.len() == 0 {
-        let empty_entity: Vec<gtfs_rt::FeedEntity> = Vec::new();
-        let empty_data = gtfs_rt::FeedMessage {
+        let empty_entity: Vec<gtfs_realtime::FeedEntity> = Vec::new();
+        let empty_data = gtfs_realtime::FeedMessage {
             header: FeedHeader {
                 gtfs_realtime_version: String::from("2.0"),
                 incrementality: None,
@@ -104,13 +104,13 @@ fn gtfs_rt_from_string(
             trip_modifications: None,
         });
     }
-    let anteater_gtfs = gtfs_rt::FeedMessage {
+    let anteater_gtfs = gtfs_realtime::FeedMessage {
         header: FeedHeader {
             gtfs_realtime_version: String::from("2.0"),
             incrementality: Some(1),
             timestamp: Some(SystemTime::now().elapsed()?.as_secs()),
         },
-        entity: anteater_entities.to_owned(),
+        entity: anteater_entities,
     };
     return Ok(anteater_gtfs);
 }
@@ -143,7 +143,7 @@ struct AnteaterExpressData {
  */
 impl AnteaterExpressData {
     /**
-     * Generates gtfs_rt::CarriageDetails based on self's data.
+     * Generates gtfs_realtime::CarriageDetails based on self's data.
      * gtfs_data assumes all vehicles are non-articulated (as
      * of now they are not/no carriage details are provided).
      */
@@ -158,7 +158,7 @@ impl AnteaterExpressData {
     }
 
     /**
-     * Generates a gtfs_rt::Position based on self's data.
+     * Generates a gtfs_realtime::Position based on self's data.
      */
     fn get_position(&self) -> Position {
         Position {
@@ -171,7 +171,7 @@ impl AnteaterExpressData {
     }
 
     /**
-     * Generates a gtfs_rt::TripDescriptor based on self's data.
+     * Generates a gtfs_realtime::TripDescriptor based on self's data.
      */
     fn get_trip_descriptor(&self) -> TripDescriptor {
         let actual_route_id:i32 = match self.route_id {
@@ -203,7 +203,7 @@ impl AnteaterExpressData {
     }
 
     /**
-     * Generates a gtfs_rt::VehicleDescriptor based on self's
+     * Generates a gtfs_realtime::VehicleDescriptor based on self's
      * data.
      */
     fn get_vehicle_descriptor(&self) -> VehicleDescriptor {
@@ -216,7 +216,7 @@ impl AnteaterExpressData {
     }
 
     /**
-     * Generates a gtfs_rt::VehiclePosition based on self's
+     * Generates a gtfs_realtime::VehiclePosition based on self's
      * data and the impl functions above.
      */
     fn get_vehicle_position(&self) -> VehiclePosition {
@@ -437,7 +437,7 @@ mod tests {
                 .unwrap()
                 .route_id
                 .unwrap(),
-            String::from("4")
+            String::from("125516")
         );
     }
 
