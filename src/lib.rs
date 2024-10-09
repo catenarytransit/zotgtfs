@@ -255,8 +255,7 @@ mod tests {
 
     fn create_example_string() -> String {
         String::from(
-            r#"jQuery111104379215856036027_1712182850874( 
-                [
+            r#"[
                     {
                         "GroundSpeed":10.99901573793,
                         "Heading":78,
@@ -309,19 +308,14 @@ mod tests {
                         "TimeStamp":"\/Date(1712229204000-0600)\/",
                         "VehicleID":7
                     }
-                ] 
-            );"#,
+                ]"#,
         )
     }
 
     fn create_no_data_string() -> String {
         String::from(
-            "jQuery111104379215856036027_1712182850874(
-            [
-                {
-                }
-            ] 
-        )",
+            "[] 
+        ",
         )
     }
 
