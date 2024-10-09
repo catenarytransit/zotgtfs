@@ -14,7 +14,7 @@ use chrono_tz::Tz;
  */
 pub async fn get_gtfs_rt() -> Result<gtfs_realtime::FeedMessage, Box<dyn std::error::Error + Send + Sync>>
 {
-    let data = reqwest::get("https://ucirvine.transloc.com/Services/JSONPRelay.svc/GetMapVehiclePoints?method=jQuery111104379215856036027_1712182850874&_=1712182850877")
+    let data = reqwest::get("https://ucirvine.transloc.com/Services/JSONPRelay.svc/GetMapVehiclePoints?_=1712182850877")
         .await?
         .text()
         .await?;
@@ -242,33 +242,8 @@ impl AnteaterExpressData {
  * is invalid.
  */
 fn parse_data(data: String) -> Result<Vec<AnteaterExpressData>, Box<dyn Error + Send + Sync>> {
-    let prefix_index = data.find("(");
-    let suffix_index = data.chars().rev().position(|x| x == ')');
-    if let (Some(prefix_index), Some(suffix_index)) = (prefix_index, suffix_index) {
-        //index at which data starts
-        let suffix_index = data.len() - (suffix_index + 1);
-        //index at which data ends
-        let prefix_index = prefix_index + 1;
-
-        if suffix_index - prefix_index < 100 {
-            let nothing: Vec<AnteaterExpressData> = Vec::new();
-            return Ok(nothing);
-        }
-        // data is iterated through, skips up to prefix_index, takes up to suffix_index, and collects the values
-
-        let data: String = data
-            .chars()
-            .skip(prefix_index)
-            .take(suffix_index - prefix_index)
-            .collect();
-        let data: Vec<AnteaterExpressData> = from_str(&data)?;
-        Ok(data)
-    } else {
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Invalid String",
-        )))
-    }
+    let data: Vec<AnteaterExpressData> = from_str(&data)?;
+    Ok(data)
 }
 
 /**
