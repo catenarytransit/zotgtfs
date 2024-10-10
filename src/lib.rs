@@ -1,15 +1,15 @@
+// Author(s): Jacob Whitecotton, Kyler Chin
+// Version: 2024-09-10
+
 use gtfs_realtime::vehicle_position::*;
 use gtfs_realtime::*;
 use serde::Deserialize;
 use serde_json::from_str;
 use std::error::Error;
 use chrono::Datelike;
-use std::time::SystemTime;
 use chrono_tz::Tz;
-// Author(s): Jacob Whitecotton, Kyler Chin
-// Version: 4/6/2024
-
 use std::time::{SystemTime, UNIX_EPOCH};
+
 
 /**
  * Fetches jsonp data from ucirvine's transit feed and converts it into gtfs_rt
