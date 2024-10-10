@@ -78,7 +78,7 @@ fn gtfs_rt_from_string(
             header: FeedHeader {
                 gtfs_realtime_version: String::from("2.0"),
                 incrementality: None,
-                timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+                timestamp: Some(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs()),
             },
             entity: empty_entity,
         };
