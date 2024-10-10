@@ -9,18 +9,69 @@ use std::error::Error;
 use chrono::Datelike;
 use chrono_tz::Tz;
 use std::time::{SystemTime, UNIX_EPOCH};
+use compact_str::CompactString;
 
+#[derive(Deserialize)]
+struct RawTranslocArrival {
+    #[serde(rename = "RouteDescription")]
+    route_description: Option<String>,
+    #[serde(rename = "RouteID")]
+    route_id: i32,
+    #[serde(rename = "RouteStopID")]
+    route_stop_id: i32,
+    #[serde(rename = "ScheduledTimes")]
+    scheduled_times: Vec<RawScheduledTimes>,
+    #[serde(rename = "ShowDefaultedOnMap")]
+    show_defaulted_on_map: bool,
+    #[serde(rename = "ShowEstimatesOnMap")]
+    show_estimates_on_map: bool,
+    #[serde(rename = "StopDescription")]
+    stop_description: Option<String>,
+    #[serde(rename = "StopId")]
+    stop_id: i32,
+    #[serde(rename = "VehicleEstimates")]
+    vehicle_estimates: Vec<RawVehicleEstimates>,
+}
+
+#[derive(Deserialize)]
+struct RawVehicleEstimates {
+    #[serde(rename = "Block")]
+    block: String,
+    #[serde(rename = "OnRoute")]
+    on_route: bool,
+    #[serde(rename = "SecondsToStop")]
+    seconds_to_stop: i32,
+    #[serde(rename = "VehicleID")]
+    vehicle_id: u16,
+}
+
+#[derive(Deserialize)]
+struct RawScheduledTimes {
+    #[serde(rename = "ArrivalTimeUTC")]
+    arrival_time_utc: String,
+    #[serde(rename = "DepartureTimeUTC")]
+    departure_time_utc: String,
+    #[serde(rename = "Block")]
+    block: String,
+    #[serde(rename = "AssignedVehicleId")]
+    assigned_vehicle_id: String,
+}
 
 /**
  * Fetches jsonp data from ucirvine's transit feed and converts it into gtfs_rt
  */
 pub async fn get_gtfs_rt() -> Result<gtfs_realtime::FeedMessage, Box<dyn std::error::Error + Send + Sync>>
 {
+    let trip_data = reqwest::get("https://ucirvine.transloc.com/Services/JSONPRelay.svc/GetRouteStopArrivals?TimesPerStopString=100&ApiKey=8882812681&_=1728535266772")
+        .await?
+        .text()
+        .await?;
+
     let data = reqwest::get("https://ucirvine.transloc.com/Services/JSONPRelay.svc/GetMapVehiclePoints?_=1712182850877")
         .await?
         .text()
         .await?;
-    gtfs_rt_from_string(data)
+    gtfs_rt_from_string(data, trip_data)
 }
 
 pub fn get_trip_id(route_id: i32) -> Option<String> {
@@ -68,9 +119,10 @@ pub fn get_trip_id(route_id: i32) -> Option<String> {
  * Function creates gtfs from a string, called by get_gtfs_rt and used for testing.
  */
 fn gtfs_rt_from_string(
-    data: String,
+    vehicle_data: String,
+    trip_data: String
 ) -> Result<gtfs_realtime::FeedMessage, Box<dyn std::error::Error + Send + Sync>> {
-    let data = parse_data(data)?;
+    let data = parse_data(vehicle_data)?;
     // if data parsed is empty (at night for example) returns an empty gtfs_rt feed.
     if data.len() == 0 {
         let empty_entity: Vec<gtfs_realtime::FeedEntity> = Vec::new();
