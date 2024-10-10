@@ -9,6 +9,8 @@ use chrono_tz::Tz;
 // Author(s): Jacob Whitecotton, Kyler Chin
 // Version: 4/6/2024
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 /**
  * Fetches jsonp data from ucirvine's transit feed and converts it into gtfs_rt
  */
@@ -76,7 +78,7 @@ fn gtfs_rt_from_string(
             header: FeedHeader {
                 gtfs_realtime_version: String::from("2.0"),
                 incrementality: None,
-                timestamp: None,
+                timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
             },
             entity: empty_entity,
         };
@@ -107,8 +109,8 @@ fn gtfs_rt_from_string(
     let anteater_gtfs = gtfs_realtime::FeedMessage {
         header: FeedHeader {
             gtfs_realtime_version: String::from("2.0"),
-            incrementality: Some(1),
-            timestamp: Some(SystemTime::now().elapsed()?.as_secs()),
+            incrementality: None,
+            timestamp: Some(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs()),
         },
         entity: anteater_entities,
     };
@@ -412,7 +414,9 @@ mod tests {
 
     #[tokio::test]
     async fn get_gtfs_rt_is_ok() {
-        assert!(get_gtfs_rt().await.is_ok());
+        let get_data = get_gtfs_rt().await;
+        assert!(get_data.is_ok());
+        println!("Got data successfully: {:?}", get_data);
     }
 
     // This only passes when Anteater Express is in service (lol)
