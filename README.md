@@ -16,6 +16,6 @@ I want this data to show up on the rest of the Catenary
 
 ### Extra notes
 
-Anteater Express / ASUCI is actually full of blockheads who are corrupt or are perpetually bitter for no reason. We got in trouble last year for "theft of services" aka pinging a public API for location data, and nearly got suspended. Genuinely worst organisation at any university. They will also be unreasonably angry if you attempt to photograph the buses from a public sidewalk, street, or bridge.
+Anteater Express / ASUCI is actually full of blockheads who are corrupt or are perpetually bitter for no reason. We got in trouble last year for "theft of services" aka pinging a public API for location data, and nearly got suspended. Genuinely worst organisation at any university. They have also harassed us for attempting to photograph the buses from a public sidewalk, street, or bridge.
 
 If ASUCI poisons my lunch, I won't be surprised.
