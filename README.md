@@ -16,4 +16,4 @@ I want this data to show up on the rest of the Catenary
 
 ### Extra notes
 
-If ASUCI poisons my lunch, let's just say I won't be surprised.
+If ASUCI poisons my lunch, I won't be surprised.
