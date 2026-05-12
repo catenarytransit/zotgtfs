@@ -57,7 +57,7 @@ fn get_active_trip_id<'a>(route_id: &str, gtfs: &'a Gtfs) -> Option<&'a String> 
 async fn update_feeds(state: Arc<AppState>) {
     loop {
         // Fetch new json
-        match reqwest::get("https://ucirvine.transloc.com/Services/JSONPRelay.svc/GetMapVehiclePoints?_=1712182850877").await {
+        match reqwest::get("https://ucirvine.transloc.com/Services/JSONPRelay.svc/GetMapVehiclePoints").await {
             Ok(res) => {
                 if let Ok(text) = res.text().await {
                     if let Ok(data) = serde_json::from_str::<Vec<AnteaterExpressData>>(&text) {
@@ -78,12 +78,15 @@ async fn update_feeds(state: Arc<AppState>) {
                                 None
                             };
 
+                            let now_la = chrono::Utc::now().with_timezone(&chrono_tz::America::Los_Angeles);
+                            let start_date_str = now_la.format("%Y%m%d").to_string();
+
                             let trip_desc = TripDescriptor {
                                 trip_id: trip_id.clone(),
                                 route_id: Some(format!("TL-{}", vehicle.RouteID)),
                                 direction_id: Some(0),
                                 start_time: start_time.map(|s| format!("{:02}:{:02}:{:02}", s / 3600, (s % 3600) / 60, s % 60)),
-                                start_date: None,
+                                start_date: Some(start_date_str),
                                 schedule_relationship: None,
                                 modified_trip: None,
                             };
@@ -132,6 +135,44 @@ async fn update_feeds(state: Arc<AppState>) {
                                 }
                             }
 
+                            let mut stop_time_updates = vec![];
+                            if let Some(ref t_id) = trip_id {
+                                if let Some(trip) = state.gtfs.trips.get(t_id) {
+                                    use gtfs_realtime::trip_update::StopTimeUpdate;
+                                    use gtfs_realtime::trip_update::StopTimeEvent;
+                                    for st in &trip.stop_times {
+                                        let seq = st.stop_sequence as u32;
+                                        // Simple algorithm: predict based on accumulated delay
+                                        let mut arrival = None;
+                                        let mut departure = None;
+                                        if st.arrival_time.is_some() {
+                                            arrival = Some(StopTimeEvent {
+                                                delay: Some(v_hist.current_delay_secs),
+                                                time: None,
+                                                uncertainty: None,
+                                            });
+                                        }
+                                        if st.departure_time.is_some() {
+                                            departure = Some(StopTimeEvent {
+                                                delay: Some(v_hist.current_delay_secs),
+                                                time: None,
+                                                uncertainty: None,
+                                            });
+                                        }
+                                        
+                                        stop_time_updates.push(StopTimeUpdate {
+                                            stop_sequence: Some(seq),
+                                            stop_id: Some(st.stop.id.clone()),
+                                            arrival,
+                                            departure,
+                                            departure_occupancy_status: None,
+                                            schedule_relationship: None,
+                                            stop_time_properties: None,
+                                        });
+                                    }
+                                }
+                            }
+
                             positions.push(FeedEntity {
                                 id: format!("pos_{}", vehicle.VehicleID),
                                 is_deleted: Some(false),
@@ -162,7 +203,7 @@ async fn update_feeds(state: Arc<AppState>) {
                                     trip_update: Some(TripUpdate {
                                         trip: trip_desc,
                                         vehicle: Some(vehicle_desc),
-                                        stop_time_update: vec![],
+                                        stop_time_update: stop_time_updates,
                                         timestamp: Some(now),
                                         delay: Some(v_hist.current_delay_secs),
                                         trip_properties: None,
@@ -200,7 +241,7 @@ async fn update_feeds(state: Arc<AppState>) {
                 eprintln!("Error fetching bus data: {}", e);
             }
         }
-        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 }
 
