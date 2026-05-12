@@ -1,8 +1,8 @@
 [package]
 name = "zotgtfs"
 license = "AGPL-3.0"
-version = "0.3.7"
-edition = "2021"
+version = "0.4.0"
+edition = "2024"
 description = "Conversion of Anteater Express data to GTFS Schedule and Realtime"
 
 [lints.rust]
