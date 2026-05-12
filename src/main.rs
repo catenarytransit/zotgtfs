@@ -1,8 +1,8 @@
-use axum::{routing::get, Router, extract::State};
-use chrono::{Timelike, TimeZone};
-use gtfs_structures::Gtfs;
-use gtfs_realtime::*;
+use axum::{Router, extract::State, routing::get};
+use chrono::Timelike;
 use gtfs_realtime::vehicle_position::*;
+use gtfs_realtime::*;
+use gtfs_structures::Gtfs;
 use prost::Message;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -35,57 +35,131 @@ struct AnteaterExpressData {
     VehicleID: i16,
 }
 
-fn get_active_trip_id<'a>(route_id: &str, gtfs: &'a Gtfs) -> Option<&'a String> {
-    let gtfs_route_id = format!("TL-{}", route_id);
-    let now = chrono::Utc::now().with_timezone(&chrono_tz::US::Pacific);
+#[derive(Clone, Debug)]
+struct ActiveTrip {
+    trip_id: String,
+    route_id: String,
+    start_time: Option<u32>,
+}
+
+fn format_gtfs_time(seconds: u32) -> String {
+    format!(
+        "{:02}:{:02}:{:02}",
+        seconds / 3600,
+        (seconds % 3600) / 60,
+        seconds % 60
+    )
+}
+
+fn get_active_trip(route_id: i32, gtfs: &Gtfs) -> Option<ActiveTrip> {
+    // TransLoc vehicle RouteID is the same numeric id used by the current UCI GTFS.
+    // Older/current data can vary, so keep TL-* as a fallback instead of making it
+    // the only possible match.
+    let raw_route_id = route_id.to_string();
+    let prefixed_route_id = format!("TL-{}", raw_route_id);
+
+    let now = chrono::Utc::now().with_timezone(&chrono_tz::America::Los_Angeles);
     let seconds_past_midnight = now.hour() * 3600 + now.minute() * 60 + now.second();
 
-    let mut fallback = None;
-    for trip in gtfs.trips.values().filter(|t| t.route_id == gtfs_route_id) {
+    let mut fallback: Option<ActiveTrip> = None;
+
+    for trip in gtfs
+        .trips
+        .values()
+        .filter(|t| t.route_id == raw_route_id || t.route_id == prefixed_route_id)
+    {
         if fallback.is_none() {
-            fallback = Some(&trip.id);
+            fallback = Some(ActiveTrip {
+                trip_id: trip.id.clone(),
+                route_id: trip.route_id.clone(),
+                start_time: trip.frequencies.first().map(|f| f.start_time).or_else(|| {
+                    trip.stop_times
+                        .first()
+                        .and_then(|st| st.departure_time.or(st.arrival_time))
+                }),
+            });
         }
+
         for freq in &trip.frequencies {
             if seconds_past_midnight >= freq.start_time && seconds_past_midnight <= freq.end_time {
-                return Some(&trip.id);
+                let instance_start = if freq.headway_secs > 0 {
+                    freq.start_time
+                        + ((seconds_past_midnight - freq.start_time) / freq.headway_secs)
+                            * freq.headway_secs
+                } else {
+                    freq.start_time
+                };
+
+                return Some(ActiveTrip {
+                    trip_id: trip.id.clone(),
+                    route_id: trip.route_id.clone(),
+                    start_time: Some(instance_start),
+                });
+            }
+        }
+
+        let trip_start = trip
+            .stop_times
+            .first()
+            .and_then(|st| st.departure_time.or(st.arrival_time));
+        let trip_end = trip
+            .stop_times
+            .last()
+            .and_then(|st| st.arrival_time.or(st.departure_time));
+
+        if let (Some(start), Some(end)) = (trip_start, trip_end) {
+            if seconds_past_midnight >= start && seconds_past_midnight <= end {
+                return Some(ActiveTrip {
+                    trip_id: trip.id.clone(),
+                    route_id: trip.route_id.clone(),
+                    start_time: Some(start),
+                });
             }
         }
     }
+
     fallback
 }
 
 async fn update_feeds(state: Arc<AppState>) {
     loop {
         // Fetch new json
-        match reqwest::get("https://ucirvine.transloc.com/Services/JSONPRelay.svc/GetMapVehiclePoints").await {
+        match reqwest::get(
+            "https://ucirvine.transloc.com/Services/JSONPRelay.svc/GetMapVehiclePoints",
+        )
+        .await
+        {
             Ok(res) => {
                 if let Ok(text) = res.text().await {
                     if let Ok(data) = serde_json::from_str::<Vec<AnteaterExpressData>>(&text) {
-                        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-                        
+                        let now = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs();
+
                         let mut positions = vec![];
                         let mut trip_updates = vec![];
 
                         let mut history_write = state.history.write().await;
 
                         for vehicle in data {
-                            let trip_id = get_active_trip_id(&vehicle.RouteID.to_string(), &state.gtfs)
-                                .cloned();
-                            
-                            let start_time = if let Some(ref t_id) = trip_id {
-                                state.gtfs.trips.get(t_id).and_then(|t| t.frequencies.first().map(|f| f.start_time))
-                            } else {
-                                None
-                            };
+                            let active_trip = get_active_trip(vehicle.RouteID, &state.gtfs);
+                            let trip_id = active_trip.as_ref().map(|t| t.trip_id.clone());
+                            let gtfs_route_id = active_trip
+                                .as_ref()
+                                .map(|t| t.route_id.clone())
+                                .unwrap_or_else(|| vehicle.RouteID.to_string());
+                            let start_time = active_trip.as_ref().and_then(|t| t.start_time);
 
-                            let now_la = chrono::Utc::now().with_timezone(&chrono_tz::America::Los_Angeles);
+                            let now_la =
+                                chrono::Utc::now().with_timezone(&chrono_tz::America::Los_Angeles);
                             let start_date_str = now_la.format("%Y%m%d").to_string();
 
                             let trip_desc = TripDescriptor {
                                 trip_id: trip_id.clone(),
-                                route_id: Some(format!("TL-{}", vehicle.RouteID)),
+                                route_id: Some(gtfs_route_id),
                                 direction_id: Some(0),
-                                start_time: start_time.map(|s| format!("{:02}:{:02}:{:02}", s / 3600, (s % 3600) / 60, s % 60)),
+                                start_time: start_time.map(format_gtfs_time),
                                 start_date: Some(start_date_str),
                                 schedule_relationship: None,
                                 modified_trip: None,
@@ -97,7 +171,7 @@ async fn update_feeds(state: Arc<AppState>) {
                                 license_plate: None,
                                 wheelchair_accessible: None,
                             };
-                            
+
                             let current_pos = Position {
                                 latitude: vehicle.Latitude,
                                 longitude: vehicle.Longitude,
@@ -106,10 +180,13 @@ async fn update_feeds(state: Arc<AppState>) {
                                 speed: Some(vehicle.GroundSpeed * (1.0 / 3.6)),
                             };
 
-                            let v_hist = history_write.entry(vehicle.VehicleID).or_insert(VehicleHistory {
-                                positions: vec![],
-                                current_delay_secs: 0,
-                            });
+                            let v_hist =
+                                history_write
+                                    .entry(vehicle.VehicleID)
+                                    .or_insert(VehicleHistory {
+                                        positions: vec![],
+                                        current_delay_secs: 0,
+                                    });
                             v_hist.positions.push((now, current_pos.clone()));
                             if v_hist.positions.len() > 100 {
                                 v_hist.positions.remove(0); // keep history bounded
@@ -123,8 +200,7 @@ async fn update_feeds(state: Arc<AppState>) {
                                 // distance in coords approx using pythagoras for a tiny diff
                                 let dx = current_pos.longitude - last.1.longitude;
                                 let dy = current_pos.latitude - last.1.latitude;
-                                let dist = (dx*dx + dy*dy).sqrt() * 111000.0; // approx meters
-                                let speed = dist / dt;
+                                let dist = (dx * dx + dy * dy).sqrt() * 111000.0; // approx meters
                                 // Assume expected speed is ~5 m/s. If slower, add to delay.
                                 if dt > 0.0 {
                                     let expected_dist = 5.0 * dt;
@@ -136,10 +212,10 @@ async fn update_feeds(state: Arc<AppState>) {
                             }
 
                             let mut stop_time_updates = vec![];
-                            if let Some(ref t_id) = trip_id {
-                                if let Some(trip) = state.gtfs.trips.get(t_id) {
-                                    use gtfs_realtime::trip_update::StopTimeUpdate;
+                            if let Some(ref active) = active_trip {
+                                if let Some(trip) = state.gtfs.trips.get(&active.trip_id) {
                                     use gtfs_realtime::trip_update::StopTimeEvent;
+                                    use gtfs_realtime::trip_update::StopTimeUpdate;
                                     for st in &trip.stop_times {
                                         let seq = st.stop_sequence as u32;
                                         // Simple algorithm: predict based on accumulated delay
@@ -159,7 +235,7 @@ async fn update_feeds(state: Arc<AppState>) {
                                                 uncertainty: None,
                                             });
                                         }
-                                        
+
                                         stop_time_updates.push(StopTimeUpdate {
                                             stop_sequence: Some(seq),
                                             stop_id: Some(st.stop.id.clone()),
@@ -196,7 +272,7 @@ async fn update_feeds(state: Arc<AppState>) {
                                 trip_modifications: None,
                             });
 
-                            if trip_id.is_some() {
+                            if active_trip.is_some() {
                                 trip_updates.push(FeedEntity {
                                     id: format!("tu_{}", vehicle.VehicleID),
                                     is_deleted: Some(false),
@@ -288,6 +364,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     println!("Listening on {}", addr);
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }
