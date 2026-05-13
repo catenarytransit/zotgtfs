@@ -204,6 +204,25 @@ fn la_start_date_string_from_epoch(epoch_secs: u64) -> String {
         .to_string()
 }
 
+fn la_midnight_epoch_secs(epoch_secs: u64) -> i64 {
+    use chrono::{Datelike, TimeZone};
+    let system_time = UNIX_EPOCH + Duration::from_secs(epoch_secs);
+    let utc_datetime: chrono::DateTime<chrono::Utc> = system_time.into();
+    let la_datetime = utc_datetime.with_timezone(&chrono_tz::America::Los_Angeles);
+    chrono_tz::America::Los_Angeles
+        .with_ymd_and_hms(
+            la_datetime.year(),
+            la_datetime.month(),
+            la_datetime.day(),
+            12,
+            0,
+            0,
+        )
+        .unwrap()
+        .timestamp()
+        - 43200
+}
+
 fn haversine_m(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     let r = 6_371_000.0_f64;
     let d_lat = (lat2 - lat1).to_radians();
@@ -600,6 +619,7 @@ async fn update_feeds(state: Arc<AppState>) {
                             .as_secs();
 
                         let start_date_str = la_start_date_string_from_epoch(now);
+                        let midnight_epoch = la_midnight_epoch_secs(now);
                         let mut positions = vec![];
                         let mut trip_updates = vec![];
                         let mut history_snapshot_to_save: Option<HashMap<i16, VehicleHistory>> =
@@ -658,8 +678,9 @@ async fn update_feeds(state: Arc<AppState>) {
                                     trip_id: trip_match.map(|matched| matched.trip_id.clone()),
                                     route_id: Some(gtfs_route_id),
                                     direction_id: Some(0),
-                                    start_time: trip_match
-                                        .map(|matched| format_gtfs_time(matched.schedule_start_time)),
+                                    start_time: trip_match.map(|matched| {
+                                        format_gtfs_time(matched.schedule_start_time)
+                                    }),
                                     start_date: Some(start_date_str.clone()),
                                     schedule_relationship: None,
                                     modified_trip: None,
@@ -685,18 +706,26 @@ async fn update_feeds(state: Arc<AppState>) {
                                             let mut arrival = None;
                                             let mut departure = None;
 
-                                            if stop_time.arrival_time.is_some() {
+                                            if let Some(arr_time) = stop_time.arrival_time {
                                                 arrival = Some(StopTimeEvent {
                                                     delay: Some(trip_match.delay_secs),
-                                                    time: None,
+                                                    time: Some(
+                                                        midnight_epoch
+                                                            + arr_time as i64
+                                                            + trip_match.delay_secs as i64,
+                                                    ),
                                                     uncertainty: None,
                                                 });
                                             }
 
-                                            if stop_time.departure_time.is_some() {
+                                            if let Some(dep_time) = stop_time.departure_time {
                                                 departure = Some(StopTimeEvent {
                                                     delay: Some(trip_match.delay_secs),
-                                                    time: None,
+                                                    time: Some(
+                                                        midnight_epoch
+                                                            + dep_time as i64
+                                                            + trip_match.delay_secs as i64,
+                                                    ),
                                                     uncertainty: None,
                                                 });
                                             }
