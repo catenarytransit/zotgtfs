@@ -886,18 +886,17 @@ struct ServiceWindow {
     service_id: &'static str,
 }
 
-
 pub fn redo_anteater_express_gtfs(gtfs: Gtfs) -> Gtfs {
     let mut gtfs = gtfs;
 
     // 1. Identify and extract templates BEFORE clearing gtfs.trips
     let mut templates = HashMap::new();
     let route_configs = [
-        ("A Line", "107"), //
-        ("E Line", "100"), //
-        ("H Line", "100"), //
-        ("M Line", "100"), //
-        ("N Line", "107"), //
+        ("A Line", "TL-8"),  // stop_code 107
+        ("E Line", "TL-10"), // stop_code 100
+        ("H Line", "TL-10"), // stop_code 100
+        ("M Line", "TL-10"), // stop_code 100
+        ("N Line", "TL-8"),  // stop_code 107
     ];
 
     for (line_name, primary_stop_id) in route_configs {
@@ -907,7 +906,6 @@ pub fn redo_anteater_express_gtfs(gtfs: Gtfs) -> Gtfs {
                 .unwrap_or("")
                 .eq_ignore_ascii_case(line_name)
         }) {
-            // Find the trip with the most stops to ensure we have the full loop sequence
             if let Some(template) = gtfs
                 .trips
                 .values()
@@ -933,7 +931,7 @@ pub fn redo_anteater_express_gtfs(gtfs: Gtfs) -> Gtfs {
             .iter()
             .find(|st| st.stop.id == primary_stop_id)
             .and_then(|st| st.arrival_time.or(st.departure_time))
-            .unwrap_or(0);
+            .expect("Anchor stop not found in template trip; check stop_id accuracy");
 
         let windows = match line_name {
             "A Line" => vec![
@@ -1049,19 +1047,18 @@ pub fn redo_anteater_express_gtfs(gtfs: Gtfs) -> Gtfs {
             let mut current_start = window.start_sec;
             while current_start <= window.end_sec {
                 let mut trip = template.clone();
-                // Constant Trip ID format: {route_id}-{service_id}-{start_seconds}
-                let trip_id = format!("{}-{}-{}", route_id, window.service_id, current_start);
+                trip.frequencies = vec![];
 
+                let trip_id = format!("{}-{}-{}", route_id, window.service_id, current_start);
                 trip.id = trip_id.clone();
                 trip.service_id = window.service_id.to_string();
 
-                // Shift all stop times relative to the University Centre scheduled departure
                 let time_shift = current_start as i32 - anchor_offset as i32;
 
                 for (idx, st) in trip.stop_times.iter_mut().enumerate() {
+                    // Apply the shift. Using i32 prevents wrap-around before the final u32 cast.
                     st.arrival_time = st.arrival_time.map(|t| (t as i32 + time_shift) as u32);
                     st.departure_time = st.departure_time.map(|t| (t as i32 + time_shift) as u32);
-
                     // Headsign maintenance based on stop sequence position
                     st.stop_headsign = match line_name {
                         "E Line" => Some(String::from(if idx < 2 {
