@@ -846,7 +846,35 @@ async fn handle_trip_updates(State(state): State<Arc<AppState>>) -> axum::respon
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let gtfs_url = "https://ucirvine.transloc.com/Secure/Admin/Reports/GTFSDownload.aspx";
-    let gtfs = Gtfs::from_url_async(gtfs_url).await.unwrap_or_default();
+    let mut gtfs = Gtfs::from_url_async(gtfs_url).await.unwrap_or_default();
+
+    for trip in gtfs.trips.values_mut() {
+        if let Some(route) = gtfs.routes.get(&trip.route_id) {
+            let long_name = route.long_name.as_deref().unwrap_or("");
+            let diff_minutes = match long_name {
+                name if name.eq_ignore_ascii_case("E Line") => Some(8),
+                name if name.eq_ignore_ascii_case("M Line") => Some(3),
+                name if name.eq_ignore_ascii_case("N Line") => Some(2),
+                name if name.eq_ignore_ascii_case("A Line") => Some(2),
+                name if name.eq_ignore_ascii_case("H Line") => Some(5),
+                _ => None,
+            };
+
+            if let Some(mins) = diff_minutes {
+                let len = trip.stop_times.len();
+                if len >= 2 {
+                    if let Some(prev_time) = trip.stop_times[len - 2]
+                        .arrival_time
+                        .or(trip.stop_times[len - 2].departure_time)
+                    {
+                        trip.stop_times[len - 1].arrival_time = Some(prev_time + mins * 60);
+                        trip.stop_times[len - 1].departure_time = None;
+                    }
+                }
+            }
+        }
+    }
+
     let history = load_history_from_disk().await;
 
     let state = Arc::new(AppState {
