@@ -239,16 +239,6 @@ fn candidate_in_current_window(start_time: i32, trip_duration: i32, service_seco
         && service_seconds <= start_time + trip_duration + TRIP_MATCH_WINDOW_AFTER_SECS
 }
 
-fn first_frequency_start_at_or_after(freq_start: u32, headway_secs: u32, lower_bound: i32) -> u32 {
-    if headway_secs == 0 || lower_bound <= freq_start as i32 {
-        return freq_start;
-    }
-
-    let delta = lower_bound as u32 - freq_start;
-    let headways = (delta + headway_secs - 1) / headway_secs;
-    freq_start.saturating_add(headways.saturating_mul(headway_secs))
-}
-
 fn candidate_trip_instances(
     transloc_route_id: i32,
     gtfs: &Gtfs,
@@ -270,53 +260,16 @@ fn candidate_trip_instances(
             .map(|end| (end as i32 - base_start as i32).max(0))
             .unwrap_or(0);
 
-        if trip.frequencies.is_empty() {
-            let start_time = base_start;
-            if candidate_in_current_window(start_time as i32, trip_duration, service_seconds) {
-                let key = format!("{}|{}|{}", trip.route_id, trip.id, start_time);
-                if seen.insert(key) {
-                    candidates.push(CandidateTrip {
-                        trip_id: trip.id.clone(),
-                        route_id: trip.route_id.clone(),
-                        start_time,
-                        schedule_start_time: start_time,
-                    });
-                }
-            }
-            continue;
-        }
-
-        for freq in &trip.frequencies {
-            if freq.headway_secs == 0 {
-                continue;
-            }
-
-            let lower_start_bound = service_seconds - trip_duration - TRIP_MATCH_WINDOW_AFTER_SECS;
-            let upper_start_bound = service_seconds + TRIP_MATCH_WINDOW_BEFORE_SECS;
-            let mut start_time = first_frequency_start_at_or_after(
-                freq.start_time,
-                freq.headway_secs,
-                lower_start_bound,
-            );
-
-            while start_time <= freq.end_time && (start_time as i32) <= upper_start_bound {
-                if candidate_in_current_window(start_time as i32, trip_duration, service_seconds) {
-                    let key = format!("{}|{}|{}", trip.route_id, trip.id, start_time);
-                    if seen.insert(key) {
-                        candidates.push(CandidateTrip {
-                            trip_id: trip.id.clone(),
-                            route_id: trip.route_id.clone(),
-                            start_time,
-                            schedule_start_time: freq.start_time,
-                        });
-                    }
-                }
-
-                let next_start = start_time.saturating_add(freq.headway_secs);
-                if next_start == start_time {
-                    break;
-                }
-                start_time = next_start;
+        let start_time = base_start;
+        if candidate_in_current_window(start_time as i32, trip_duration, service_seconds) {
+            let key = format!("{}|{}|{}", trip.route_id, trip.id, start_time);
+            if seen.insert(key) {
+                candidates.push(CandidateTrip {
+                    trip_id: trip.id.clone(),
+                    route_id: trip.route_id.clone(),
+                    start_time,
+                    schedule_start_time: start_time,
+                });
             }
         }
     }
