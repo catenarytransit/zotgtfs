@@ -91,6 +91,7 @@ struct CandidateTrip {
     trip_id: String,
     route_id: String,
     start_time: u32,
+    schedule_start_time: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -98,6 +99,7 @@ struct TripMatch {
     trip_id: String,
     route_id: String,
     start_time: u32,
+    schedule_start_time: u32,
     score: f64,
     delay_secs: i32,
     current_stop_sequence: Option<u32>,
@@ -277,6 +279,7 @@ fn candidate_trip_instances(
                         trip_id: trip.id.clone(),
                         route_id: trip.route_id.clone(),
                         start_time,
+                        schedule_start_time: start_time,
                     });
                 }
             }
@@ -304,6 +307,7 @@ fn candidate_trip_instances(
                             trip_id: trip.id.clone(),
                             route_id: trip.route_id.clone(),
                             start_time,
+                            schedule_start_time: freq.start_time,
                         });
                     }
                 }
@@ -534,6 +538,7 @@ fn score_candidate_trip(
         trip_id: candidate.trip_id.clone(),
         route_id: candidate.route_id.clone(),
         start_time: candidate.start_time,
+        schedule_start_time: candidate.schedule_start_time,
         score: average_score,
         delay_secs,
         current_stop_sequence,
@@ -701,7 +706,7 @@ async fn update_feeds(state: Arc<AppState>) {
                                     route_id: Some(gtfs_route_id),
                                     direction_id: Some(0),
                                     start_time: trip_match
-                                        .map(|matched| format_gtfs_time(matched.start_time)),
+                                        .map(|matched| format_gtfs_time(matched.schedule_start_time)),
                                     start_date: Some(start_date_str.clone()),
                                     schedule_relationship: None,
                                     modified_trip: None,
