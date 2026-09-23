@@ -63,9 +63,9 @@ pub fn redo_anteater_express_gtfs(mut gtfs: Gtfs) -> Gtfs {
                         template.stop_times.clear();
                         let e_stops = vec![
                             ("100", 0),
-                            ("101", 60)
+                            ("101", 60),
                             ("106", 120),
-                            ("100", 600)
+                            ("100", 600),
                         ];
                         for (i, (sid, offset)) in e_stops.into_iter().enumerate() {
                             if let Some(stop) = find_stop(&gtfs, sid) {
