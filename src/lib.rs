@@ -58,6 +58,27 @@ pub fn redo_anteater_express_gtfs(mut gtfs: Gtfs) -> Gtfs {
                 .cloned()
             {
                 // Overwrite H-Line sequence
+                if line_name == "E Line" {
+                    if let Some(default_st) = template.stop_times.first().cloned() {
+                        template.stop_times.clear();
+                        let e_stops = vec![
+                            ("100", 0),
+                            ("101", 60)
+                            ("106", 120),
+                            ("100", 600)
+                        ];
+                        for (i, (sid, offset)) in e_stops.into_iter().enumerate() {
+                            if let Some(stop) = find_stop(&gtfs, sid) {
+                                let mut st = default_st.clone();
+                                st.stop = stop;
+                                st.arrival_time = Some(offset);
+                                st.departure_time = Some(offset);
+                                st.stop_sequence = i as u32;
+                                template.stop_times.push(st);
+                            }
+                        }
+                    }
+                }
                 if line_name == "H Line" {
                     if let Some(default_st) = template.stop_times.first().cloned() {
                         template.stop_times.clear();
@@ -260,4 +281,16 @@ pub fn redo_anteater_express_gtfs(mut gtfs: Gtfs) -> Gtfs {
 
     gtfs.trips = new_trips;
     gtfs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compile_the_gtfs() {
+        let gtfs = Gtfs::from_path("original_gtfs.zip").expect("Failed to load GTFS");
+        let modified_gtfs = redo_anteater_express_gtfs(gtfs);
+        assert!(!modified_gtfs.trips.is_empty(), "No trips generated");
+    }
 }
