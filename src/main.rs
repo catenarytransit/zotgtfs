@@ -29,6 +29,7 @@ const TRIP_MATCH_WINDOW_AFTER_SECS: i32 = 30 * 60;
 const MAX_REASONABLE_DELAY_SECS: i32 = 30 * 60;
 const STOP_OBSERVATION_RADIUS_M: f64 = 85.0;
 const STOP_OBSERVATION_FALLBACK_RADIUS_M: f64 = 150.0;
+const STOP_VISIT_SAMPLE_GAP_SECS: u64 = 2 * 60;
 const STOP_OBSERVATION_TIME_WINDOW_SECS: i32 = 45 * 60;
 const CURRENT_DELAY_OBSERVATION_MAX_AGE_SECS: u64 = 15 * 60;
 const PREDICTION_MIN_DWELL_SECS: i32 = 20;
@@ -412,13 +413,21 @@ fn infer_stop_observation(
         return None;
     };
 
-    let mut closest: Option<(&PositionSample, f64)> = None;
-    let mut inside_geofence: Vec<&PositionSample> = vec![];
+    // Centre the history search around the delay we already believe this
+    // vehicle has.  On loop routes the same physical stop can be visited again
+    // roughly one headway later, so a wide schedule-only window can contain
+    // points from two different laps.
+    let expected_secs = scheduled_secs
+        + history
+            .current_delay_secs
+            .clamp(-MAX_REASONABLE_DELAY_SECS, MAX_REASONABLE_DELAY_SECS);
+    let mut nearby_samples: Vec<(&PositionSample, f64, i32)> = vec![];
 
     for sample in &history.positions {
         let observed_day_secs = la_seconds_past_midnight_from_epoch(sample.timestamp) as i32;
-        let observed_secs = align_service_seconds(observed_day_secs, scheduled_secs);
-        if (observed_secs - scheduled_secs).abs() > STOP_OBSERVATION_TIME_WINDOW_SECS {
+        let observed_secs = align_service_seconds(observed_day_secs, expected_secs);
+        let time_error_secs = (observed_secs - expected_secs).abs();
+        if time_error_secs > STOP_OBSERVATION_TIME_WINDOW_SECS {
             continue;
         }
 
@@ -428,45 +437,90 @@ fn infer_stop_observation(
             stop_latitude,
             stop_longitude,
         );
-        if distance_m > STOP_OBSERVATION_FALLBACK_RADIUS_M {
-            continue;
-        }
-
-        if closest
-            .as_ref()
-            .map(|(_, best_distance)| distance_m < *best_distance)
-            .unwrap_or(true)
-        {
-            closest = Some((sample, distance_m));
-        }
-
-        if distance_m <= STOP_OBSERVATION_RADIUS_M {
-            inside_geofence.push(sample);
+        if distance_m <= STOP_OBSERVATION_FALLBACK_RADIUS_M {
+            nearby_samples.push((sample, distance_m, time_error_secs));
         }
     }
 
-    let (closest_sample, closest_distance_m) = closest?;
-    let (arrival_epoch_secs, departure_epoch_secs) = if inside_geofence.is_empty() {
-        (closest_sample.timestamp, closest_sample.timestamp)
+    if nearby_samples.is_empty() {
+        return None;
+    }
+
+    // Split points inside the stop geofence into distinct visits.  Previously
+    // all points in the +/-45 minute window were put into one bucket and the
+    // earliest point became the arrival while the latest became the departure.
+    // For a loop this could combine two separate laps and produce an arrival
+    // about one full loop early (for example, -31 minutes) while departure was
+    // correctly around -5 minutes.
+    let mut geofence_samples = nearby_samples
+        .iter()
+        .copied()
+        .filter(|(_, distance_m, _)| *distance_m <= STOP_OBSERVATION_RADIUS_M)
+        .collect::<Vec<_>>();
+    geofence_samples.sort_by_key(|(sample, _, _)| sample.timestamp);
+
+    let mut visit_candidates: Vec<(&PositionSample, f64, i32)> = vec![];
+    let mut visit_start = 0_usize;
+    while visit_start < geofence_samples.len() {
+        let mut visit_end = visit_start + 1;
+        while visit_end < geofence_samples.len()
+            && geofence_samples[visit_end]
+                .0
+                .timestamp
+                .saturating_sub(geofence_samples[visit_end - 1].0.timestamp)
+                <= STOP_VISIT_SAMPLE_GAP_SECS
+        {
+            visit_end += 1;
+        }
+
+        // The event time for a completed stop is the GPS sample at which the
+        // bus was physically closest to that stop.  Arrival and departure both
+        // use this same observation because TransLoc only gives us positions,
+        // not separate door-open/door-close events.
+        if let Some(closest_in_visit) = geofence_samples[visit_start..visit_end]
+            .iter()
+            .copied()
+            .min_by(|a, b| {
+                a.1.partial_cmp(&b.1)
+                    .unwrap_or(Ordering::Equal)
+                    .then_with(|| a.2.cmp(&b.2))
+            })
+        {
+            visit_candidates.push(closest_in_visit);
+        }
+
+        visit_start = visit_end;
+    }
+
+    let selected = if visit_candidates.is_empty() {
+        // We did not get inside the tighter geofence.  Prefer the nearby point
+        // from the expected visit, then use distance as a tie breaker.
+        nearby_samples.iter().copied().min_by(|a, b| {
+            a.2.cmp(&b.2).then_with(|| {
+                a.1.partial_cmp(&b.1)
+                    .unwrap_or(Ordering::Equal)
+            })
+        })
     } else {
-        let arrival = inside_geofence
-            .iter()
-            .map(|sample| sample.timestamp)
-            .min()
-            .unwrap_or(closest_sample.timestamp);
-        let departure = inside_geofence
-            .iter()
-            .map(|sample| sample.timestamp)
-            .max()
-            .unwrap_or(closest_sample.timestamp);
-        (arrival, departure)
-    };
+        // When there are multiple visits to the same coordinates, select the
+        // visit whose closest point is nearest to the expected schedule time.
+        // Distance is only the tie breaker so an exceptionally close point
+        // from the previous lap cannot beat the correct visit.
+        visit_candidates.into_iter().min_by(|a, b| {
+            a.2.cmp(&b.2).then_with(|| {
+                a.1.partial_cmp(&b.1)
+                    .unwrap_or(Ordering::Equal)
+            })
+        })
+    }?;
+
+    let (closest_sample, closest_distance_m, _) = selected;
 
     Some(StopObservation {
         stop_sequence: stop_time.stop_sequence as u32,
         stop_id: stop_time.stop.id.clone(),
-        arrival_epoch_secs,
-        departure_epoch_secs,
+        arrival_epoch_secs: closest_sample.timestamp,
+        departure_epoch_secs: closest_sample.timestamp,
         closest_distance_m,
     })
 }
@@ -482,17 +536,25 @@ fn update_stop_observations(
 
     for stop_time in &trip.stop_times {
         let stop_sequence = stop_time.stop_sequence as u32;
-        if stop_sequence >= current_stop_sequence
-            || history
-                .stop_observations
-                .iter()
-                .any(|observation| observation.stop_sequence == stop_sequence)
-        {
+        if stop_sequence >= current_stop_sequence {
             continue;
         }
 
         if let Some(observation) = infer_stop_observation(history, stop_time) {
-            history.stop_observations.push(observation);
+            // Re-evaluate already-recorded stops as well.  This intentionally
+            // repairs persisted observations written by the old algorithm,
+            // where arrival could come from a previous lap and departure from
+            // the current one.  Once the correct visit is selected, subsequent
+            // passes produce the same closest-position observation.
+            if let Some(existing) = history
+                .stop_observations
+                .iter_mut()
+                .find(|existing| existing.stop_sequence == stop_sequence)
+            {
+                *existing = observation;
+            } else {
+                history.stop_observations.push(observation);
+            }
         }
     }
 
