@@ -31,6 +31,7 @@ const STOP_OBSERVATION_RADIUS_M: f64 = 85.0;
 const STOP_OBSERVATION_FALLBACK_RADIUS_M: f64 = 150.0;
 const STOP_VISIT_SAMPLE_GAP_SECS: u64 = 2 * 60;
 const STOP_OBSERVATION_TIME_WINDOW_SECS: i32 = 45 * 60;
+const STOP_OBSERVATION_MIN_RUNTIME_RATIO: f64 = 0.25;
 const CURRENT_DELAY_OBSERVATION_MAX_AGE_SECS: u64 = 15 * 60;
 const PREDICTION_MIN_DWELL_SECS: i32 = 20;
 const PREDICTION_TREND_DECAY_SECS: f64 = 15.0 * 60.0;
@@ -405,6 +406,8 @@ fn stop_id_for_sequence(trip: &Trip, stop_sequence: u32) -> Option<String> {
 fn infer_stop_observation(
     history: &VehicleHistory,
     stop_time: &StopTime,
+    trip_start_secs: u32,
+    not_before_epoch_secs: Option<u64>,
 ) -> Option<StopObservation> {
     let scheduled_secs = stop_arrival_secs(stop_time)? as i32;
     let (Some(stop_latitude), Some(stop_longitude)) =
@@ -425,6 +428,30 @@ fn infer_stop_observation(
 
     for sample in &history.positions {
         let observed_day_secs = la_seconds_past_midnight_from_epoch(sample.timestamp) as i32;
+
+        // Vehicle history intentionally survives trip changes so it can help
+        // matching, but a stop observation must never reach backwards into the
+        // previous lap.  Align the sample to this GTFS service day and reject
+        // anything before the current trip instance started.
+        let observed_trip_secs =
+            align_service_seconds(observed_day_secs, trip_start_secs as i32);
+        let scheduled_progress_secs =
+            (scheduled_secs - trip_start_secs as i32).max(0) as f64;
+        let minimum_progress_secs =
+            (scheduled_progress_secs * STOP_OBSERVATION_MIN_RUNTIME_RATIO).round() as i32;
+        if observed_trip_secs < trip_start_secs as i32 + minimum_progress_secs {
+            continue;
+        }
+
+        // Stop observations are an ordered path through the trip, not a set of
+        // independent nearest-neighbour matches.  A sample selected for this
+        // stop must occur after the last accepted stop observation.
+        if let Some(not_before_epoch_secs) = not_before_epoch_secs {
+            if sample.timestamp < not_before_epoch_secs {
+                continue;
+            }
+        }
+
         let observed_secs = align_service_seconds(observed_day_secs, expected_secs);
         let time_error_secs = (observed_secs - expected_secs).abs();
         if time_error_secs > STOP_OBSERVATION_TIME_WINDOW_SECS {
@@ -525,6 +552,7 @@ fn update_stop_observations(
     history: &mut VehicleHistory,
     trip: &Trip,
     current_stop_sequence: Option<u32>,
+    trip_start_secs: u32,
 ) {
     // The trip origin is also the previous trip's terminus on loop service.
     // A vehicle can sit there through the layover, so position history cannot
@@ -534,17 +562,17 @@ fn update_stop_observations(
         .stop_times
         .first()
         .map(|stop_time| stop_time.stop_sequence as u32);
-    if let Some(first_stop_sequence) = first_stop_sequence {
-        // Also remove observations persisted by older versions so the bogus
-        // origin delay cannot influence current-delay or runtime prediction.
-        history
-            .stop_observations
-            .retain(|observation| observation.stop_sequence != first_stop_sequence);
-    }
-
     let Some(current_stop_sequence) = current_stop_sequence else {
         return;
     };
+
+    // Rebuild the completed-stop history as one monotonic sequence.  The old
+    // implementation selected a best GPS point for every stop independently,
+    // which allowed a point from an earlier lap (or an earlier pass near a
+    // later stop) to become a -10/-20 minute "arrival" even though the bus had
+    // already been observed farther along the current trip.
+    let mut rebuilt_observations = Vec::new();
+    let mut previous_observation: Option<(u64, u32)> = None;
 
     for stop_time in &trip.stop_times {
         let stop_sequence = stop_time.stop_sequence as u32;
@@ -552,27 +580,42 @@ fn update_stop_observations(
             continue;
         }
 
-        if let Some(observation) = infer_stop_observation(history, stop_time) {
-            // Re-evaluate already-recorded stops as well.  This intentionally
-            // repairs persisted observations written by the old algorithm,
-            // where arrival could come from a previous lap and departure from
-            // the current one.  Once the correct visit is selected, subsequent
-            // passes produce the same closest-position observation.
-            if let Some(existing) = history
-                .stop_observations
-                .iter_mut()
-                .find(|existing| existing.stop_sequence == stop_sequence)
-            {
-                *existing = observation;
-            } else {
-                history.stop_observations.push(observation);
+        let not_before_epoch_secs = previous_observation.and_then(
+            |(previous_departure_epoch_secs, previous_scheduled_departure_secs)| {
+                stop_arrival_secs(stop_time).map(|scheduled_arrival_secs| {
+                    let scheduled_runtime_secs = scheduled_arrival_secs
+                        .saturating_sub(previous_scheduled_departure_secs);
+                    let minimum_runtime_secs = ((scheduled_runtime_secs as f64)
+                        * STOP_OBSERVATION_MIN_RUNTIME_RATIO)
+                        .ceil() as u64;
+
+                    // Even when two GTFS stop times are equal, do not let one
+                    // GPS sample satisfy two different stops.
+                    previous_departure_epoch_secs
+                        .saturating_add(minimum_runtime_secs.max(1))
+                })
+            },
+        );
+
+        if let Some(observation) = infer_stop_observation(
+            history,
+            stop_time,
+            trip_start_secs,
+            not_before_epoch_secs,
+        ) {
+            if let Some(scheduled_departure_secs) = stop_departure_secs(stop_time) {
+                previous_observation = Some((
+                    observation.departure_epoch_secs,
+                    scheduled_departure_secs,
+                ));
             }
+            rebuilt_observations.push(observation);
         }
     }
 
-    history
-        .stop_observations
-        .sort_by_key(|observation| observation.stop_sequence);
+    // Replacing rather than mutating in place also repairs bad observations
+    // persisted by older builds on the very next successful update.
+    history.stop_observations = rebuilt_observations;
 }
 
 fn observed_delay_secs(epoch_secs: u64, scheduled_secs: u32) -> i32 {
@@ -771,7 +814,12 @@ fn update_vehicle_history_for_match(
         trip_match.current_stop_sequence
     };
 
-    update_stop_observations(history, trip, current_stop_sequence);
+    update_stop_observations(
+        history,
+        trip,
+        current_stop_sequence,
+        trip_match.start_time,
+    );
 
     history.current_delay_secs =
         latest_observed_delay(history, trip, now).unwrap_or(trip_match.delay_secs);
