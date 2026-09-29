@@ -276,6 +276,7 @@ pub fn redo_anteater_express_gtfs(mut gtfs: Gtfs) -> Gtfs {
                 trip.frequencies.clear();
 
                 let time_shift = current_start as i32 - anchor_offset as i32;
+                let mut passed_headsign_split = false;
 
                 for st in trip.stop_times.iter_mut() {
                     // Shift arrival and departure, ensuring they are never negative
@@ -283,6 +284,75 @@ pub fn redo_anteater_express_gtfs(mut gtfs: Gtfs) -> Gtfs {
                         .arrival_time
                         .map(|t| (t as i32 + time_shift).max(0) as u32);
                     st.departure_time = st.arrival_time;
+
+                    // stop_headsign overrides trip_headsign for this specific stop_time.
+                    // The split stop itself gets the return headsign because the bus is
+                    // departing that stop toward the second half of the loop.
+                    let stop_code = st.stop.code.as_deref().unwrap_or(st.stop.id.as_str());
+
+                    st.stop_headsign = match line_name {
+                        "H Line" | "A Line" => {
+                            if stop_code == "103" {
+                                passed_headsign_split = true;
+                            }
+
+                            Some(
+                                if passed_headsign_split {
+                                    if line_name == "H Line" {
+                                        "University Center South"
+                                    } else {
+                                        "University Center North"
+                                    }
+                                } else {
+                                    "Vista del Campo (VDC)"
+                                }
+                                .to_string(),
+                            )
+                        }
+                        "N Line" => {
+                            if stop_code == "118" {
+                                passed_headsign_split = true;
+                            }
+
+                            Some(
+                                if passed_headsign_split {
+                                    "University Center North"
+                                } else {
+                                    "VDC Norte"
+                                }
+                                .to_string(),
+                            )
+                        }
+                        "M Line" => {
+                            if stop_code == "161" {
+                                passed_headsign_split = true;
+                            }
+
+                            Some(
+                                if passed_headsign_split {
+                                    "University Center South"
+                                } else {
+                                    "Engineering"
+                                }
+                                .to_string(),
+                            )
+                        }
+                        "E Line" => {
+                            if stop_code == "106" {
+                                passed_headsign_split = true;
+                            }
+
+                            Some(
+                                if passed_headsign_split {
+                                    "University Center South"
+                                } else {
+                                    "Plaza Verde"
+                                }
+                                .to_string(),
+                            )
+                        }
+                        _ => st.stop_headsign.clone(),
+                    };
                 }
 
                 new_trips.insert(trip_id, trip);
