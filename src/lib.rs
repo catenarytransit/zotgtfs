@@ -32,6 +32,23 @@ pub fn redo_anteater_express_gtfs(mut gtfs: Gtfs) -> Gtfs {
         })
     };
 
+    // Campus-California (stop_code 106) is missing from some source GTFS
+    // exports. Add it before rebuilding trips so the E Line's existing 106
+    // stop entry is not silently skipped by find_stop().
+    if find_stop(&gtfs, "106").is_none() {
+        let campus_california = gtfs_structures::Stop {
+            id: "106".to_string(),
+            code: Some("106".to_string()),
+            name: Some("Campus-California".to_string()),
+            latitude: Some(33.648832),
+            longitude: Some(-117.829686),
+            ..gtfs_structures::Stop::default()
+        };
+
+        gtfs.stops
+            .insert("106".to_string(), Arc::new(campus_california));
+    }
+
     // 1. Identify and extract templates
     let mut templates = HashMap::new();
     let route_configs = [
