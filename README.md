@@ -4,7 +4,9 @@ download this damn thing:
 
 https://api.transloc.com/gtfs/uci.zip
 
-Now your Anteater static file is done!
+Next, pass it through the function in lib.rs to correct the timetable
+
+Final schedule result: https://catenarymaps.org/en/agency/University_of_California_Irvine
 
 # Notes
 
