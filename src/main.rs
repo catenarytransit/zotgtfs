@@ -14,6 +14,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use zotgtfs::redo_anteater_express_gtfs;
 
+mod loop_assignment;
+use loop_assignment::{
+    LoopTracker, prepare_loop_assignment, terminal_trip_matches, trip_runs_today,
+};
+
 const HISTORY_PATH_ENV: &str = "VEHICLE_HISTORY_PATH";
 const DEFAULT_HISTORY_PATH: &str = "vehicle_history.json";
 const HISTORY_SAVE_INTERVAL_SECS: u64 = 5;
@@ -70,6 +75,8 @@ struct VehicleHistory {
     matched_stop_id: Option<String>,
     last_transloc_route_id: Option<i32>,
     last_seen: u64,
+    #[serde(default)]
+    loop_tracker: LoopTracker,
 }
 
 impl Default for VehicleHistory {
@@ -85,6 +92,7 @@ impl Default for VehicleHistory {
             matched_stop_id: None,
             last_transloc_route_id: None,
             last_seen: 0,
+            loop_tracker: LoopTracker::default(),
         }
     }
 }
@@ -285,16 +293,15 @@ fn candidate_trip_instances(
     transloc_route_id: i32,
     gtfs: &Gtfs,
     service_seconds: u32,
+    now: u64,
 ) -> Vec<CandidateTrip> {
     let mut candidates = vec![];
     let mut seen = HashSet::new();
     let service_seconds = service_seconds as i32;
 
-    for trip in gtfs
-        .trips
-        .values()
-        .filter(|trip| route_id_matches(transloc_route_id, &trip.route_id))
-    {
+    for trip in gtfs.trips.values().filter(|trip| {
+        route_id_matches(transloc_route_id, &trip.route_id) && trip_runs_today(gtfs, trip, now)
+    }) {
         let Some(base_start) = trip_start_secs(trip) else {
             continue;
         };
@@ -331,8 +338,15 @@ fn current_vehicle_sample(vehicle: &AnteaterExpressData, now: u64) -> PositionSa
 }
 
 fn append_position_sample(history: &mut VehicleHistory, vehicle: &AnteaterExpressData, now: u64) {
-    if history.last_transloc_route_id.is_some()
-        && history.last_transloc_route_id != Some(vehicle.RouteID)
+    if (history.last_transloc_route_id.is_some()
+        && history.last_transloc_route_id != Some(vehicle.RouteID))
+        || (history.last_seen != 0
+            && now.saturating_sub(history.last_seen) > STOP_VISIT_SAMPLE_GAP_SECS)
+        || history
+            .loop_tracker
+            .service_date
+            .as_deref()
+            .is_some_and(|date| date != la_start_date_string_from_epoch(now))
     {
         // Vehicle IDs can be reused or vehicles can be reassigned. Do not let a
         // route-5 history influence a future route-7 match for the same vehicle.
@@ -344,6 +358,7 @@ fn append_position_sample(history: &mut VehicleHistory, vehicle: &AnteaterExpres
         history.assigned_start_time = None;
         history.matched_stop_sequence = None;
         history.matched_stop_id = None;
+        history.loop_tracker = LoopTracker::default();
     }
 
     let sample = current_vehicle_sample(vehicle, now);
@@ -373,6 +388,7 @@ fn append_position_sample(history: &mut VehicleHistory, vehicle: &AnteaterExpres
 
     history.last_transloc_route_id = Some(vehicle.RouteID);
     history.last_seen = now;
+    history.loop_tracker.service_date = Some(la_start_date_string_from_epoch(now));
 }
 
 fn stop_arrival_secs(stop_time: &StopTime) -> Option<u32> {
@@ -427,16 +443,17 @@ fn infer_stop_observation(
     let mut nearby_samples: Vec<(&PositionSample, f64, i32)> = vec![];
 
     for sample in &history.positions {
+        if sample.timestamp < history.loop_tracker.lap_started_at {
+            continue;
+        }
         let observed_day_secs = la_seconds_past_midnight_from_epoch(sample.timestamp) as i32;
 
         // Vehicle history intentionally survives trip changes so it can help
         // matching, but a stop observation must never reach backwards into the
         // previous lap.  Align the sample to this GTFS service day and reject
         // anything before the current trip instance started.
-        let observed_trip_secs =
-            align_service_seconds(observed_day_secs, trip_start_secs as i32);
-        let scheduled_progress_secs =
-            (scheduled_secs - trip_start_secs as i32).max(0) as f64;
+        let observed_trip_secs = align_service_seconds(observed_day_secs, trip_start_secs as i32);
+        let scheduled_progress_secs = (scheduled_secs - trip_start_secs as i32).max(0) as f64;
         let minimum_progress_secs =
             (scheduled_progress_secs * STOP_OBSERVATION_MIN_RUNTIME_RATIO).round() as i32;
         if observed_trip_secs < trip_start_secs as i32 + minimum_progress_secs {
@@ -583,31 +600,25 @@ fn update_stop_observations(
         let not_before_epoch_secs = previous_observation.and_then(
             |(previous_departure_epoch_secs, previous_scheduled_departure_secs)| {
                 stop_arrival_secs(stop_time).map(|scheduled_arrival_secs| {
-                    let scheduled_runtime_secs = scheduled_arrival_secs
-                        .saturating_sub(previous_scheduled_departure_secs);
+                    let scheduled_runtime_secs =
+                        scheduled_arrival_secs.saturating_sub(previous_scheduled_departure_secs);
                     let minimum_runtime_secs = ((scheduled_runtime_secs as f64)
                         * STOP_OBSERVATION_MIN_RUNTIME_RATIO)
                         .ceil() as u64;
 
                     // Even when two GTFS stop times are equal, do not let one
                     // GPS sample satisfy two different stops.
-                    previous_departure_epoch_secs
-                        .saturating_add(minimum_runtime_secs.max(1))
+                    previous_departure_epoch_secs.saturating_add(minimum_runtime_secs.max(1))
                 })
             },
         );
 
-        if let Some(observation) = infer_stop_observation(
-            history,
-            stop_time,
-            trip_start_secs,
-            not_before_epoch_secs,
-        ) {
+        if let Some(observation) =
+            infer_stop_observation(history, stop_time, trip_start_secs, not_before_epoch_secs)
+        {
             if let Some(scheduled_departure_secs) = stop_departure_secs(stop_time) {
-                previous_observation = Some((
-                    observation.departure_epoch_secs,
-                    scheduled_departure_secs,
-                ));
+                previous_observation =
+                    Some((observation.departure_epoch_secs, scheduled_departure_secs));
             }
             rebuilt_observations.push(observation);
         }
@@ -710,6 +721,9 @@ fn predicted_delay_for_stop(
     target_stop_sequence: u32,
     departure_event: bool,
 ) -> i32 {
+    if history.loop_tracker.terminal.is_some() {
+        return 0;
+    }
     let Some(current_sequence) = history.matched_stop_sequence else {
         return history.current_delay_secs;
     };
@@ -801,6 +815,23 @@ fn update_vehicle_history_for_match(
         history.matched_stop_id = None;
     }
 
+    if !same_assignment {
+        history.loop_tracker.begin_assignment(now);
+    }
+
+    if history.loop_tracker.terminal.is_some() {
+        // The terminal arrival belongs to the previous trip. Publish the next
+        // trip at its origin, on time, throughout this single terminal visit.
+        history.stop_observations.clear();
+        history.current_delay_secs = 0;
+        history.assigned_trip_id = Some(trip_match.trip_id.clone());
+        history.assigned_route_id = Some(trip_match.route_id.clone());
+        history.assigned_start_time = Some(trip_match.start_time);
+        history.matched_stop_sequence = trip.stop_times.first().map(|st| st.stop_sequence);
+        history.matched_stop_id = trip.stop_times.first().map(|st| st.stop.id.clone());
+        return;
+    }
+
     let current_stop_sequence = if same_assignment {
         match (
             history.matched_stop_sequence,
@@ -814,12 +845,7 @@ fn update_vehicle_history_for_match(
         trip_match.current_stop_sequence
     };
 
-    update_stop_observations(
-        history,
-        trip,
-        current_stop_sequence,
-        trip_match.start_time,
-    );
+    update_stop_observations(history, trip, current_stop_sequence, trip_match.start_time);
 
     history.current_delay_secs =
         latest_observed_delay(history, trip, now).unwrap_or(trip_match.delay_secs);
@@ -904,6 +930,7 @@ fn score_candidate_trip(
                 .rev()
                 .filter(|sample| {
                     sample.transloc_route_id == vehicle.RouteID
+                        && sample.timestamp >= history.loop_tracker.lap_started_at
                         && now.saturating_sub(sample.timestamp) <= MATCH_SAMPLE_MAX_AGE_SECS
                 })
                 .take(MATCH_SAMPLE_LIMIT.saturating_sub(1))
@@ -1007,7 +1034,34 @@ fn rank_trip_matches_for_vehicle(
     now: u64,
     service_seconds: u32,
 ) -> Vec<TripMatch> {
-    let mut ranked = candidate_trip_instances(vehicle.RouteID, gtfs, service_seconds)
+    if let Some(history) = history {
+        if let Some(matches) = terminal_trip_matches(vehicle, history, gtfs, now) {
+            return matches;
+        }
+        // Once a lap is observed away from its origin, keep its identity until
+        // the terminal event. Adjacent departures are other buses' trips.
+        if history.loop_tracker.departed_terminal {
+            if let Some(trip) = history
+                .assigned_trip_id
+                .as_ref()
+                .and_then(|id| gtfs.trips.get(id))
+            {
+                if trip_runs_today(gtfs, trip, now) {
+                    let start = trip_start_secs(trip).unwrap_or(0);
+                    let candidate = CandidateTrip {
+                        trip_id: trip.id.clone(),
+                        route_id: trip.route_id.clone(),
+                        start_time: start,
+                        schedule_start_time: start,
+                    };
+                    return score_candidate_trip(&candidate, trip, Some(history), vehicle, now)
+                        .into_iter()
+                        .collect();
+                }
+            }
+        }
+    }
+    let mut ranked = candidate_trip_instances(vehicle.RouteID, gtfs, service_seconds, now)
         .into_iter()
         .filter_map(|candidate| {
             gtfs.trips
@@ -1029,7 +1083,7 @@ fn select_unique_trip_matches(
 ) -> HashMap<i16, TripMatch> {
     let service_seconds = la_seconds_past_midnight_from_epoch(now);
     let mut ranked_by_vehicle: HashMap<i16, Vec<TripMatch>> = HashMap::new();
-    let mut edges: Vec<(i16, usize, f64)> = vec![];
+    let mut edges: Vec<(i16, usize, f64, bool)> = vec![];
 
     for vehicle in vehicles {
         let ranked = rank_trip_matches_for_vehicle(
@@ -1041,18 +1095,29 @@ fn select_unique_trip_matches(
         );
 
         for (index, trip_match) in ranked.iter().enumerate() {
-            edges.push((vehicle.VehicleID, index, trip_match.score));
+            let committed = history.get(&vehicle.VehicleID).is_some_and(|history| {
+                trip_assignment_matches(history, trip_match)
+                    && (history.loop_tracker.departed_terminal
+                        || history.loop_tracker.terminal.is_some())
+            });
+            edges.push((vehicle.VehicleID, index, trip_match.score, committed));
         }
 
         ranked_by_vehicle.insert(vehicle.VehicleID, ranked);
     }
 
-    edges.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(Ordering::Equal));
+    // Reserve running trips and already selected layover trips before giving
+    // unclaimed departures to vehicles which have just reached the terminus.
+    edges.sort_by(|a, b| {
+        b.3.cmp(&a.3)
+            .then_with(|| a.2.total_cmp(&b.2))
+            .then_with(|| a.0.cmp(&b.0))
+    });
 
     let mut assigned = HashMap::new();
     let mut used_trip_instances = HashSet::new();
 
-    for (vehicle_id, match_index, _) in edges {
+    for (vehicle_id, match_index, _, _) in edges {
         if assigned.contains_key(&vehicle_id) {
             continue;
         }
@@ -1080,6 +1145,125 @@ fn current_vehicle_position(vehicle: &AnteaterExpressData) -> Position {
         odometer: None,
         speed: Some(vehicle.GroundSpeed * (1.0 / 3.6)),
     }
+}
+
+fn stop_time_updates_for_match(
+    trip: &Trip,
+    trip_match: &TripMatch,
+    vehicle_history: Option<&VehicleHistory>,
+    midnight_epoch: i64,
+) -> Vec<gtfs_realtime::trip_update::StopTimeUpdate> {
+    let mut updates = vec![];
+    use gtfs_realtime::trip_update::StopTimeEvent;
+    use gtfs_realtime::trip_update::StopTimeUpdate;
+
+    let first_stop_sequence = trip
+        .stop_times
+        .first()
+        .map(|stop_time| stop_time.stop_sequence as u32);
+
+    for stop_time in &trip.stop_times {
+        let seq = stop_time.stop_sequence as u32;
+        let is_first_stop = first_stop_sequence == Some(seq);
+        let observation = if is_first_stop {
+            None
+        } else {
+            vehicle_history.and_then(|history| {
+                history
+                    .stop_observations
+                    .iter()
+                    .find(|observation| observation.stop_sequence == seq)
+            })
+        };
+        let current_sequence = vehicle_history
+            .and_then(|history| history.matched_stop_sequence)
+            .or(trip_match.current_stop_sequence);
+
+        let waiting_at_terminal =
+            vehicle_history.is_some_and(|history| history.loop_tracker.terminal.is_some());
+        let (arrival, departure) = if is_first_stop || waiting_at_terminal {
+            // Waiting at the terminus publishes the entire upcoming trip on
+            // time. Its origin must never inherit the previous lap's arrival.
+            let arrival = stop_time.arrival_time.map(|time| StopTimeEvent {
+                delay: Some(0),
+                time: Some(midnight_epoch + time as i64),
+                uncertainty: Some(0),
+            });
+            let departure = stop_time.departure_time.map(|time| StopTimeEvent {
+                delay: Some(0),
+                time: Some(midnight_epoch + time as i64),
+                uncertainty: Some(0),
+            });
+            (arrival, departure)
+        } else if let Some(observation) = observation {
+            let arrival = stop_time.arrival_time.map(|time| StopTimeEvent {
+                delay: Some(observed_delay_secs(observation.arrival_epoch_secs, time)),
+                time: Some(observation.arrival_epoch_secs as i64),
+                uncertainty: Some(0),
+            });
+            let departure = stop_time.departure_time.map(|time| StopTimeEvent {
+                delay: Some(observed_delay_secs(observation.departure_epoch_secs, time)),
+                time: Some(observation.departure_epoch_secs as i64),
+                uncertainty: Some(0),
+            });
+            (arrival, departure)
+        } else if current_sequence
+            .map(|current| seq >= current)
+            .unwrap_or(true)
+        {
+            let uncertainty = vehicle_history
+                .map(|history| prediction_uncertainty_secs(history, trip, seq))
+                .unwrap_or(90);
+            let arrival = stop_time.arrival_time.map(|time| {
+                let delay = vehicle_history
+                    .map(|history| predicted_delay_for_stop(history, trip, seq, false))
+                    .unwrap_or(trip_match.delay_secs);
+                StopTimeEvent {
+                    delay: Some(delay),
+                    time: Some(midnight_epoch + time as i64 + delay as i64),
+                    uncertainty: Some(uncertainty),
+                }
+            });
+            let departure = stop_time.departure_time.map(|time| {
+                let delay = vehicle_history
+                    .map(|history| predicted_delay_for_stop(history, trip, seq, true))
+                    .unwrap_or(trip_match.delay_secs);
+                StopTimeEvent {
+                    delay: Some(delay),
+                    time: Some(midnight_epoch + time as i64 + delay as i64),
+                    uncertainty: Some(uncertainty),
+                }
+            });
+            (arrival, departure)
+        } else {
+            continue;
+        };
+
+        let departure = if is_first_stop && !waiting_at_terminal {
+            vehicle_history
+                .and_then(|history| history.loop_tracker.origin_departure_epoch)
+                .zip(stop_time.departure_time)
+                .map(|(observed, scheduled)| StopTimeEvent {
+                    delay: Some(observed_delay_secs(observed, scheduled)),
+                    time: Some(observed as i64),
+                    uncertainty: Some(0),
+                })
+                .or(departure)
+        } else {
+            departure
+        };
+
+        updates.push(StopTimeUpdate {
+            stop_sequence: Some(seq),
+            stop_id: Some(stop_time.stop.id.clone()),
+            arrival,
+            departure,
+            departure_occupancy_status: None,
+            schedule_relationship: None,
+            stop_time_properties: None,
+        });
+    }
+    updates
 }
 
 async fn update_feeds(state: Arc<AppState>) {
@@ -1115,6 +1299,7 @@ async fn update_feeds(state: Arc<AppState>) {
                                     .entry(vehicle.VehicleID)
                                     .or_insert_with(VehicleHistory::default);
                                 append_position_sample(v_hist, vehicle, now);
+                                prepare_loop_assignment(v_hist, vehicle, &state.gtfs, now);
                             }
 
                             history_write.retain(|_, history| {
@@ -1192,148 +1377,12 @@ async fn update_feeds(state: Arc<AppState>) {
 
                                 if let Some(trip_match) = trip_match {
                                     if let Some(trip) = state.gtfs.trips.get(&trip_match.trip_id) {
-                                        use gtfs_realtime::trip_update::StopTimeEvent;
-                                        use gtfs_realtime::trip_update::StopTimeUpdate;
-
-                                        let first_stop_sequence = trip
-                                            .stop_times
-                                            .first()
-                                            .map(|stop_time| stop_time.stop_sequence as u32);
-
-                                        for stop_time in &trip.stop_times {
-                                            let seq = stop_time.stop_sequence as u32;
-                                            let is_first_stop = first_stop_sequence == Some(seq);
-                                            let observation = if is_first_stop {
-                                                None
-                                            } else {
-                                                vehicle_history.and_then(|history| {
-                                                    history.stop_observations.iter().find(
-                                                        |observation| {
-                                                            observation.stop_sequence == seq
-                                                        },
-                                                    )
-                                                })
-                                            };
-                                            let current_sequence = vehicle_history
-                                                .and_then(|history| history.matched_stop_sequence)
-                                                .or(trip_match.current_stop_sequence);
-
-                                            let (arrival, departure) = if is_first_stop {
-                                                // This is an origin, not an arrival event for the
-                                                // current trip.  The same physical stop is often the
-                                                // previous trip's terminus, where the bus may idle
-                                                // through a layover.  Until we have a distinct
-                                                // departure observation, publish the scheduled origin
-                                                // time as on-time instead of reusing the prior arrival.
-                                                let arrival = stop_time.arrival_time.map(|time| {
-                                                    StopTimeEvent {
-                                                        delay: Some(0),
-                                                        time: Some(midnight_epoch + time as i64),
-                                                        uncertainty: Some(0),
-                                                    }
-                                                });
-                                                let departure =
-                                                    stop_time.departure_time.map(|time| {
-                                                        StopTimeEvent {
-                                                            delay: Some(0),
-                                                            time: Some(
-                                                                midnight_epoch + time as i64,
-                                                            ),
-                                                            uncertainty: Some(0),
-                                                        }
-                                                    });
-                                                (arrival, departure)
-                                            } else if let Some(observation) = observation {
-                                                let arrival = stop_time.arrival_time.map(|time| {
-                                                    StopTimeEvent {
-                                                        delay: Some(observed_delay_secs(
-                                                            observation.arrival_epoch_secs,
-                                                            time,
-                                                        )),
-                                                        time: Some(
-                                                            observation.arrival_epoch_secs as i64,
-                                                        ),
-                                                        uncertainty: Some(0),
-                                                    }
-                                                });
-                                                let departure =
-                                                    stop_time.departure_time.map(|time| {
-                                                        StopTimeEvent {
-                                                            delay: Some(observed_delay_secs(
-                                                                observation.departure_epoch_secs,
-                                                                time,
-                                                            )),
-                                                            time: Some(
-                                                                observation.departure_epoch_secs
-                                                                    as i64,
-                                                            ),
-                                                            uncertainty: Some(0),
-                                                        }
-                                                    });
-                                                (arrival, departure)
-                                            } else if current_sequence
-                                                .map(|current| seq >= current)
-                                                .unwrap_or(true)
-                                            {
-                                                let uncertainty = vehicle_history
-                                                    .map(|history| {
-                                                        prediction_uncertainty_secs(
-                                                            history, trip, seq,
-                                                        )
-                                                    })
-                                                    .unwrap_or(90);
-                                                let arrival = stop_time.arrival_time.map(|time| {
-                                                    let delay = vehicle_history
-                                                        .map(|history| {
-                                                            predicted_delay_for_stop(
-                                                                history, trip, seq, false,
-                                                            )
-                                                        })
-                                                        .unwrap_or(trip_match.delay_secs);
-                                                    StopTimeEvent {
-                                                        delay: Some(delay),
-                                                        time: Some(
-                                                            midnight_epoch
-                                                                + time as i64
-                                                                + delay as i64,
-                                                        ),
-                                                        uncertainty: Some(uncertainty),
-                                                    }
-                                                });
-                                                let departure =
-                                                    stop_time.departure_time.map(|time| {
-                                                        let delay = vehicle_history
-                                                            .map(|history| {
-                                                                predicted_delay_for_stop(
-                                                                    history, trip, seq, true,
-                                                                )
-                                                            })
-                                                            .unwrap_or(trip_match.delay_secs);
-                                                        StopTimeEvent {
-                                                            delay: Some(delay),
-                                                            time: Some(
-                                                                midnight_epoch
-                                                                    + time as i64
-                                                                    + delay as i64,
-                                                            ),
-                                                            uncertainty: Some(uncertainty),
-                                                        }
-                                                    });
-                                                (arrival, departure)
-                                            } else {
-                                                continue;
-                                            };
-
-                                            stop_time_updates.push(StopTimeUpdate {
-                                                stop_sequence: Some(seq),
-                                                stop_id: Some(stop_time.stop.id.clone()),
-                                                arrival,
-                                                departure,
-                                                departure_occupancy_status: None,
-                                                schedule_relationship: None,
-                                                stop_time_properties: None,
-                                            });
-                                        }
+                                        stop_time_updates = stop_time_updates_for_match(
+                                            trip,
+                                            trip_match,
+                                            vehicle_history,
+                                            midnight_epoch,
+                                        );
                                     }
                                 }
 
@@ -1358,7 +1407,12 @@ async fn update_feeds(state: Arc<AppState>) {
                                                 trip_match
                                                     .and_then(|matched| matched.stop_id.clone())
                                             }),
-                                        current_status: None,
+                                        current_status: vehicle_history
+                                            .filter(|history| {
+                                                history.loop_tracker.terminal.is_some()
+                                                    && (0.0..1.0).contains(&vehicle.GroundSpeed)
+                                            })
+                                            .map(|_| VehicleStopStatus::StoppedAt as i32),
                                         timestamp: Some(now),
                                         congestion_level: None,
                                         occupancy_status: None,
