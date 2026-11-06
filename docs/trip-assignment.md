@@ -45,3 +45,28 @@ vehicle recordings. Missing the penultimate-stop observation can prevent a
 confirmed handover; the matcher does not invent completion from schedule time.
 
 Run the offline fixture tests with `cargo test --locked --all-targets`.
+
+## Stop occurrences on out-and-back streets
+
+GPS positions are decoded together using a forward-only Viterbi path over the
+trip's ordered stop occurrences, adapted from
+[Irvine Connect's matcher](https://github.com/catenarytransit/irvine-connect-realtime-gtfs/blob/4770b458279b9d8b338554522d9b4e5e3a8f7d50/src/matcher/viterbi.rs).
+Spatial emissions use a 25-metre Gaussian; transitions compare cumulative
+stop-to-stop distance with GPS displacement (200-metre scale) and penalize
+inconsistent movement direction. Moving vehicles' valid headings also help
+resolve a first observation on overlapping legs. Schedule deviation has a
+15-minute tolerance before a soft penalty, allowing delayed buses to remain on
+the correct leg. All stop occurrences are considered, including mid-trip starts;
+forward skips remain possible when observations are sparse.
+
+For a street served in the order 1, 2, 3, 4, 5, 6, with opposing pairs 1/6,
+2/5 and 3/4, an outbound position can no longer independently select a return
+stop just because its coordinates or scheduled time are closer. Current-stop
+identity and delay use the decoded path. Completed-stop observations are rebuilt
+using only samples assigned to that particular occurrence, preventing an
+outbound pass from supplying a return-stop arrival. Existing lap boundaries
+still exclude positions from the preceding trip.
+
+The matcher uses stop-to-stop distances rather than full road geometry. A
+stationary first observation without a usable heading can remain ambiguous
+until subsequent movement supplies direction evidence.
