@@ -159,18 +159,25 @@ pub(super) fn prepare_loop_assignment(
         }
         if distance > TERMINAL_EXIT_M {
             history.loop_tracker.departed_terminal = true;
-            // Use geographic approach evidence, independent of the schedule
-            // match's potentially ambiguous first/last stop sequence.
-            let interior = &trip.stop_times[1..trip.stop_times.len() - 1];
-            if let Some((index, _)) = interior
+            // The approach is a stop occurrence on the decoded lap, not an
+            // independent nearest stop across a dead-end street.
+            let samples: Vec<_> = history
+                .positions
                 .iter()
-                .enumerate()
-                .filter_map(|(i, st)| distance_to(vehicle, &st.stop).map(|d| (i + 1, d)))
-                .filter(|(_, d)| *d <= STOP_OBSERVATION_RADIUS_M)
-                .min_by(|a, b| a.1.total_cmp(&b.1))
-            {
-                history.loop_tracker.approach_index =
-                    history.loop_tracker.approach_index.max(index);
+                .filter(|sample| sample.timestamp >= history.loop_tracker.lap_started_at)
+                .cloned()
+                .collect();
+            let path =
+                stop_path::match_stop_path(&samples, trip, trip_start_secs(trip).unwrap_or(0));
+            if let Some(index) = path.last().copied().flatten() {
+                if index > 0
+                    && index + 1 < trip.stop_times.len()
+                    && distance_to(vehicle, &trip.stop_times[index].stop)
+                        .is_some_and(|d| d <= STOP_OBSERVATION_RADIUS_M)
+                {
+                    history.loop_tracker.approach_index =
+                        history.loop_tracker.approach_index.max(index);
+                }
             }
         }
         let returned = history.loop_tracker.departed_terminal
@@ -521,7 +528,7 @@ mod tests {
     }
 
     #[test]
-    fn committed_trips_are_reserved_before_new_terminal_assignments() {
+    fn committed_waiting_trips_are_reserved_before_new_terminal_assignments() {
         let gtfs = timetable();
         let mut incumbent = returned_history(&gtfs);
         let next = terminal_trip_matches(&bus(2, 33.0, 0.0), &incumbent, &gtfs, at(32750))
@@ -556,15 +563,17 @@ mod tests {
     fn end_to_end_matching_hands_over_once_and_rearms_after_departure() {
         let gtfs = timetable();
         let mut histories = HashMap::from([(1, running_history())]);
+        // The very early next trip is corrected to other_bus after departure;
+        // the physical lap still completes once and selects later on return.
         for (seconds, latitude, speed, expected) in [
             (32520, 33.005, 15.0, "old"),
             (32630, 33.01, 15.0, "old"),
             (32740, 33.0, 0.0, "old"),
             (32750, 33.0, 0.0, "next"),
             (32820, 33.0, 0.0, "next"),
-            (32930, 33.005, 15.0, "next"),
-            (33040, 33.01, 15.0, "next"),
-            (33150, 33.0, 0.0, "next"),
+            (32930, 33.005, 15.0, "other_bus"),
+            (33040, 33.01, 15.0, "other_bus"),
+            (33150, 33.0, 0.0, "other_bus"),
             (33160, 33.0, 0.0, "later"),
         ] {
             let vehicle = bus(1, latitude, speed);

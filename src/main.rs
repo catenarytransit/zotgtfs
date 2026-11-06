@@ -14,6 +14,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use zotgtfs::redo_anteater_express_gtfs;
 
+mod global_assignment;
 mod loop_assignment;
 mod stop_path;
 use loop_assignment::{
@@ -28,8 +29,6 @@ const HISTORY_MAX_SAMPLES: usize = 480;
 const HISTORY_MIN_SAMPLE_INTERVAL_SECS: u64 = 10;
 const HISTORY_MIN_SAMPLE_DISTANCE_M: f64 = 25.0;
 const MATCH_SAMPLE_MAX_AGE_SECS: u64 = 60 * 60;
-const MATCH_SAMPLE_LIMIT: usize = 36;
-const MAX_CANDIDATES_PER_VEHICLE: usize = 20;
 const TRIP_MATCH_WINDOW_BEFORE_SECS: i32 = 20 * 60;
 const TRIP_MATCH_WINDOW_AFTER_SECS: i32 = 30 * 60;
 const MAX_REASONABLE_DELAY_SECS: i32 = 30 * 60;
@@ -151,7 +150,6 @@ struct StopMatch {
     distance_m: f64,
     scheduled_secs: i32,
     observed_secs: i32,
-    score: f64,
 }
 
 fn format_gtfs_time(seconds: u32) -> String {
@@ -823,6 +821,15 @@ fn prediction_uncertainty_secs(
     }
 }
 
+fn same_stop_pattern(a: &Trip, b: &Trip) -> bool {
+    a.route_id == b.route_id
+        && a.stop_times.len() == b.stop_times.len()
+        && a.stop_times
+            .iter()
+            .zip(&b.stop_times)
+            .all(|(a, b)| a.stop_sequence == b.stop_sequence && a.stop.id == b.stop.id)
+}
+
 fn update_vehicle_history_for_match(
     history: &mut VehicleHistory,
     trip: &Trip,
@@ -837,7 +844,15 @@ fn update_vehicle_history_for_match(
     }
 
     if !same_assignment {
-        history.loop_tracker.begin_assignment(now);
+        let temporal_correction = history.loop_tracker.departed_terminal
+            && history.assigned_route_id.as_deref() == Some(trip.route_id.as_str())
+            && history.loop_tracker.terminal.is_none();
+        if !temporal_correction {
+            history.loop_tracker.begin_assignment(now);
+        }
+        // Recenter observation selection on this instance, not a persisted
+        // -20-minute estimate from the displaced instance.
+        history.current_delay_secs = trip_match.delay_secs;
     }
 
     if history.loop_tracker.terminal.is_some() {
@@ -891,7 +906,6 @@ fn stop_match_for_sample(
     let template_stop_secs = stop_time_secs(stop_time)?;
     let scheduled_secs = candidate_start_secs + template_stop_secs as i32 - base_start_secs;
     let aligned_observed_secs = align_service_seconds(observed_secs, scheduled_secs);
-    let time_error_secs = (aligned_observed_secs - scheduled_secs).abs() as f64;
     let distance_m = haversine_m(
         sample.latitude as f64,
         sample.longitude as f64,
@@ -906,7 +920,6 @@ fn stop_match_for_sample(
         distance_m,
         scheduled_secs,
         observed_secs: aligned_observed_secs,
-        score: time_error_secs / 45.0 + distance_m / 50.0,
     })
 }
 
@@ -929,7 +942,6 @@ fn score_candidate_trip(
                         && sample.timestamp >= history.loop_tracker.lap_started_at
                         && now.saturating_sub(sample.timestamp) <= MATCH_SAMPLE_MAX_AGE_SECS
                 })
-                .take(MATCH_SAMPLE_LIMIT.saturating_sub(1))
                 .cloned()
                 .collect::<Vec<_>>();
             samples.reverse();
@@ -941,13 +953,10 @@ fn score_candidate_trip(
     // arrived less than HISTORY_MIN_SAMPLE_INTERVAL_SECS after the last sample.
     samples.push(current_vehicle_sample(vehicle, now));
 
-    let mut total_score = 0.0_f64;
-    let mut total_weight = 0.0_f64;
-    let mut delay_samples = vec![];
+    // Collapse repeated polls to the closest physical observation of each
+    // occurrence. A long dwell must not outweigh the rest of the lap.
+    let mut events: HashMap<usize, (PositionSample, StopMatch)> = HashMap::new();
     let mut newest_match: Option<(u64, StopMatch)> = None;
-
-    // Decode the whole history before calculating scores or delays. Selecting
-    // a nearest stop independently loses the direction of an out-and-back leg.
     let path = stop_path::match_stop_path(&samples, trip, candidate.start_time);
     for (sample, stop_index) in samples.into_iter().zip(path) {
         let Some(stop_index) = stop_index else {
@@ -964,56 +973,72 @@ fn score_candidate_trip(
         ) else {
             continue;
         };
-
-        let age_secs = now.saturating_sub(sample.timestamp);
-        let age_weight = 1.0 / (1.0 + age_secs as f64 / 600.0);
-        total_score += stop_match.score * age_weight;
-        total_weight += age_weight;
-
-        // Delay is only meaningful when the vehicle is reasonably close to a
-        // known stop. The newest match is still used as a fallback below.
-        if stop_match.distance_m <= 150.0 {
-            delay_samples.push(
-                (stop_match.observed_secs - stop_match.scheduled_secs)
-                    .clamp(-MAX_REASONABLE_DELAY_SECS, MAX_REASONABLE_DELAY_SECS),
-            );
-        }
-
         if newest_match
             .as_ref()
-            .map(|(timestamp, _)| sample.timestamp > *timestamp)
-            .unwrap_or(true)
+            .is_none_or(|(timestamp, _)| sample.timestamp >= *timestamp)
         {
-            newest_match = Some((sample.timestamp, stop_match));
+            newest_match = Some((sample.timestamp, stop_match.clone()));
+        }
+        if stop_match.distance_m <= STOP_OBSERVATION_FALLBACK_RADIUS_M {
+            let replace = events
+                .get(&stop_index)
+                .is_none_or(|(_, old)| stop_match.distance_m < old.distance_m);
+            if replace {
+                events.insert(stop_index, (sample, stop_match));
+            }
         }
     }
-
-    if total_weight == 0.0 {
-        return None;
-    }
-
-    let mut average_score = total_score / total_weight;
-
-    // Small hysteresis so a vehicle does not bounce between adjacent frequency
-    // instances when its score is effectively tied with its previous assignment.
-    if let Some(history) = history {
-        if history.assigned_trip_id.as_deref() == Some(candidate.trip_id.as_str())
-            && history.assigned_route_id.as_deref() == Some(candidate.route_id.as_str())
-            && history.assigned_start_time == Some(candidate.start_time)
-        {
-            average_score *= 0.90;
+    let mut residuals = Vec::new();
+    let mut geographic_cost = 0.0;
+    let origin_departure = history.and_then(|h| h.loop_tracker.origin_departure_epoch);
+    for (index, (sample, matched)) in &events {
+        if *index != 0 || origin_departure.is_none() {
+            residuals.push((
+                sample.timestamp,
+                matched.observed_secs - matched.scheduled_secs,
+            ));
         }
+        geographic_cost += matched.distance_m / 50.0;
     }
-
-    delay_samples.sort_unstable();
-    let delay_secs = if !delay_samples.is_empty() {
-        delay_samples[delay_samples.len() / 2]
-    } else if let Some((_, newest)) = &newest_match {
-        (newest.observed_secs - newest.scheduled_secs)
-            .clamp(-MAX_REASONABLE_DELAY_SECS, MAX_REASONABLE_DELAY_SECS)
-    } else {
-        0
-    };
+    // The start and finish share coordinates but have different physical
+    // timestamps. The observed origin departure anchors the timetable instance;
+    // it survives temporal reassignment and is never taken from a return visit.
+    if let Some(departure) = origin_departure {
+        let observed = align_service_seconds(
+            la_seconds_past_midnight_from_epoch(departure) as i32,
+            candidate.start_time as i32,
+        );
+        residuals.push((departure, observed - candidate.start_time as i32));
+    }
+    if residuals.is_empty() {
+        let (_, newest) = newest_match.as_ref()?;
+        residuals.push((now, newest.observed_secs - newest.scheduled_secs));
+        geographic_cost = newest.distance_m / 50.0;
+    }
+    // Symmetric absolute error: -9 minutes loses to +1 minute on a 10-minute
+    // headway. No clamping here: a grossly wrong instance must remain expensive.
+    let total_weight: f64 = residuals
+        .iter()
+        .map(|(ts, _)| 1.0 / (1.0 + now.saturating_sub(*ts) as f64 / 600.0))
+        .sum();
+    let temporal_cost: f64 = residuals
+        .iter()
+        .map(|(ts, delta)| delta.abs() as f64 / (1.0 + now.saturating_sub(*ts) as f64 / 600.0))
+        .sum::<f64>()
+        / total_weight;
+    let mut average_score = temporal_cost / 45.0 + geographic_cost / events.len().max(1) as f64;
+    if history.is_some_and(|h| {
+        h.assigned_trip_id.as_deref() == Some(candidate.trip_id.as_str())
+            && h.assigned_start_time == Some(candidate.start_time)
+    }) {
+        // A fixed five-second preference resolves near ties without preserving
+        // a large early error through multiplicative hysteresis.
+        average_score = (average_score - 5.0 / 45.0).max(0.0);
+    }
+    let mut delays: Vec<_> = residuals.iter().map(|(_, delta)| *delta).collect();
+    delays.sort_unstable();
+    let delay_secs =
+        delays[delays.len() / 2].clamp(-MAX_REASONABLE_DELAY_SECS, MAX_REASONABLE_DELAY_SECS);
 
     let current_stop_sequence = newest_match.as_ref().map(|(_, m)| m.stop_sequence);
     let stop_id = newest_match.as_ref().map(|(_, m)| m.stop_id.clone());
@@ -1041,31 +1066,20 @@ fn rank_trip_matches_for_vehicle(
         if let Some(matches) = terminal_trip_matches(vehicle, history, gtfs, now) {
             return matches;
         }
-        // Once a lap is observed away from its origin, keep its identity until
-        // the terminal event. Adjacent departures are other buses' trips.
-        if history.loop_tracker.departed_terminal {
-            if let Some(trip) = history
-                .assigned_trip_id
-                .as_ref()
-                .and_then(|id| gtfs.trips.get(id))
-            {
-                if trip_runs_today(gtfs, trip, now) {
-                    let start = trip_start_secs(trip).unwrap_or(0);
-                    let candidate = CandidateTrip {
-                        trip_id: trip.id.clone(),
-                        route_id: trip.route_id.clone(),
-                        start_time: start,
-                        schedule_start_time: start,
-                    };
-                    return score_candidate_trip(&candidate, trip, Some(history), vehicle, now)
-                        .into_iter()
-                        .collect();
-                }
-            }
-        }
     }
     let mut ranked = candidate_trip_instances(vehicle.RouteID, gtfs, service_seconds, now)
         .into_iter()
+        .filter(|candidate| {
+            let assigned = history
+                .filter(|h| h.loop_tracker.departed_terminal)
+                .and_then(|h| h.assigned_trip_id.as_ref())
+                .and_then(|id| gtfs.trips.get(id));
+            assigned.is_none_or(|assigned| {
+                gtfs.trips
+                    .get(&candidate.trip_id)
+                    .is_some_and(|trip| same_stop_pattern(assigned, trip))
+            })
+        })
         .filter_map(|candidate| {
             gtfs.trips
                 .get(&candidate.trip_id)
@@ -1073,8 +1087,11 @@ fn rank_trip_matches_for_vehicle(
         })
         .collect::<Vec<_>>();
 
-    ranked.sort_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(Ordering::Equal));
-    ranked.truncate(MAX_CANDIDATES_PER_VEHICLE);
+    ranked.sort_by(|a, b| {
+        a.score
+            .total_cmp(&b.score)
+            .then_with(|| a.instance_key().cmp(&b.instance_key()))
+    });
     ranked
 }
 
@@ -1085,59 +1102,43 @@ fn select_unique_trip_matches(
     now: u64,
 ) -> HashMap<i16, TripMatch> {
     let service_seconds = la_seconds_past_midnight_from_epoch(now);
-    let mut ranked_by_vehicle: HashMap<i16, Vec<TripMatch>> = HashMap::new();
-    let mut edges: Vec<(i16, usize, f64, bool)> = vec![];
-
-    for vehicle in vehicles {
-        let ranked = rank_trip_matches_for_vehicle(
-            vehicle,
-            history.get(&vehicle.VehicleID),
-            gtfs,
-            now,
-            service_seconds,
-        );
-
-        for (index, trip_match) in ranked.iter().enumerate() {
-            let committed = history.get(&vehicle.VehicleID).is_some_and(|history| {
-                trip_assignment_matches(history, trip_match)
-                    && (history.loop_tracker.departed_terminal
-                        || history.loop_tracker.terminal.is_some())
-            });
-            edges.push((vehicle.VehicleID, index, trip_match.score, committed));
-        }
-
-        ranked_by_vehicle.insert(vehicle.VehicleID, ranked);
-    }
-
-    // Reserve running trips and already selected layover trips before giving
-    // unclaimed departures to vehicles which have just reached the terminus.
-    edges.sort_by(|a, b| {
-        b.3.cmp(&a.3)
-            .then_with(|| a.2.total_cmp(&b.2))
-            .then_with(|| a.0.cmp(&b.0))
-    });
-
-    let mut assigned = HashMap::new();
-    let mut used_trip_instances = HashSet::new();
-
-    for (vehicle_id, match_index, _, _) in edges {
-        if assigned.contains_key(&vehicle_id) {
-            continue;
-        }
-
-        let Some(matches) = ranked_by_vehicle.get(&vehicle_id) else {
-            continue;
-        };
-        let Some(trip_match) = matches.get(match_index) else {
-            continue;
-        };
-
-        if used_trip_instances.insert(trip_match.instance_key()) {
-            assigned.insert(vehicle_id, trip_match.clone());
+    let mut candidates: Vec<_> = vehicles
+        .iter()
+        .map(|vehicle| {
+            (
+                vehicle.VehicleID,
+                rank_trip_matches_for_vehicle(
+                    vehicle,
+                    history.get(&vehicle.VehicleID),
+                    gtfs,
+                    now,
+                    service_seconds,
+                ),
+            )
+        })
+        .collect();
+    // A waiting successor is a committed terminal event. Keep that physical
+    // commitment while optimizing all flexible running/initial assignments.
+    let mut committed = HashMap::new();
+    let mut reserved = HashSet::new();
+    for (id, matches) in &candidates {
+        if let Some(h) = history
+            .get(id)
+            .filter(|h| h.loop_tracker.terminal.is_some())
+        {
+            if let Some(matched) = matches.iter().find(|m| trip_assignment_matches(h, m)) {
+                if reserved.insert(matched.instance_key()) {
+                    committed.insert(*id, matched.clone());
+                }
+            }
         }
     }
-
-    assigned
+    candidates.retain(|(id, _)| !committed.contains_key(id));
+    for (_, matches) in &mut candidates {
+        matches.retain(|m| !reserved.contains(&m.instance_key()));
+    }
+    committed.extend(global_assignment::assign(candidates));
+    committed
 }
 
 fn current_vehicle_position(vehicle: &AnteaterExpressData) -> Position {
