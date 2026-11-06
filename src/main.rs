@@ -15,6 +15,7 @@ use tokio::sync::RwLock;
 use zotgtfs::redo_anteater_express_gtfs;
 
 mod loop_assignment;
+mod stop_path;
 use loop_assignment::{
     LoopTracker, prepare_loop_assignment, terminal_trip_matches, trip_runs_today,
 };
@@ -591,7 +592,16 @@ fn update_stop_observations(
     let mut rebuilt_observations = Vec::new();
     let mut previous_observation: Option<(u64, u32)> = None;
 
-    for stop_time in &trip.stop_times {
+    let samples: Vec<_> = history
+        .positions
+        .iter()
+        .filter(|sample| sample.timestamp >= history.loop_tracker.lap_started_at)
+        .cloned()
+        .collect();
+    let path = stop_path::match_stop_path(&samples, trip, trip_start_secs);
+    let mut occurrence_history = history.clone();
+
+    for (stop_index, stop_time) in trip.stop_times.iter().enumerate() {
         let stop_sequence = stop_time.stop_sequence as u32;
         if first_stop_sequence == Some(stop_sequence) || stop_sequence >= current_stop_sequence {
             continue;
@@ -613,9 +623,20 @@ fn update_stop_observations(
             },
         );
 
-        if let Some(observation) =
-            infer_stop_observation(history, stop_time, trip_start_secs, not_before_epoch_secs)
-        {
+        // Only the winning occurrence may claim this position. In particular,
+        // an outbound sample cannot become an observation of a return stop.
+        occurrence_history.positions = samples
+            .iter()
+            .zip(&path)
+            .filter(|(_, matched)| **matched == Some(stop_index))
+            .map(|(sample, _)| sample.clone())
+            .collect();
+        if let Some(observation) = infer_stop_observation(
+            &occurrence_history,
+            stop_time,
+            trip_start_secs,
+            not_before_epoch_secs,
+        ) {
             if let Some(scheduled_departure_secs) = stop_departure_secs(stop_time) {
                 previous_observation =
                     Some((observation.departure_epoch_secs, scheduled_departure_secs));
@@ -858,60 +879,35 @@ fn update_vehicle_history_for_match(
         .or_else(|| trip_match.stop_id.clone());
 }
 
-fn best_stop_match_for_sample(
+fn stop_match_for_sample(
     sample: &PositionSample,
     trip: &Trip,
+    stop_index: usize,
     base_start_secs: i32,
     candidate_start_secs: i32,
     observed_secs: i32,
 ) -> Option<StopMatch> {
-    let mut best: Option<StopMatch> = None;
-
-    for stop_time in &trip.stop_times {
-        let Some(template_stop_secs) = stop_time_secs(stop_time) else {
-            continue;
-        };
-
-        let stop_offset = template_stop_secs as i32 - base_start_secs;
-        let scheduled_secs = candidate_start_secs + stop_offset;
-        let aligned_observed_secs = align_service_seconds(observed_secs, scheduled_secs);
-        let time_error_secs = (aligned_observed_secs - scheduled_secs).abs() as f64;
-        let (Some(stop_latitude), Some(stop_longitude)) =
-            (stop_time.stop.latitude, stop_time.stop.longitude)
-        else {
-            continue;
-        };
-
-        let distance_m = haversine_m(
-            sample.latitude as f64,
-            sample.longitude as f64,
-            stop_latitude,
-            stop_longitude,
-        );
-
-        // One point is roughly 45 seconds of schedule mismatch or 50 meters of
-        // stop-location mismatch. This lets schedule and geography both matter.
-        let score = (time_error_secs / 45.0) + (distance_m / 50.0);
-
-        let stop_match = StopMatch {
-            stop_sequence: stop_time.stop_sequence as u32,
-            stop_id: stop_time.stop.id.clone(),
-            distance_m,
-            scheduled_secs,
-            observed_secs: aligned_observed_secs,
-            score,
-        };
-
-        if best
-            .as_ref()
-            .map(|existing| stop_match.score < existing.score)
-            .unwrap_or(true)
-        {
-            best = Some(stop_match);
-        }
-    }
-
-    best
+    let stop_time = trip.stop_times.get(stop_index)?;
+    let template_stop_secs = stop_time_secs(stop_time)?;
+    let scheduled_secs = candidate_start_secs + template_stop_secs as i32 - base_start_secs;
+    let aligned_observed_secs = align_service_seconds(observed_secs, scheduled_secs);
+    let time_error_secs = (aligned_observed_secs - scheduled_secs).abs() as f64;
+    let distance_m = haversine_m(
+        sample.latitude as f64,
+        sample.longitude as f64,
+        stop_time.stop.latitude?,
+        stop_time.stop.longitude?,
+    );
+    // Preserve the existing candidate-trip ranking scale after decoding the
+    // occurrence using the complete GPS path.
+    Some(StopMatch {
+        stop_sequence: stop_time.stop_sequence,
+        stop_id: stop_time.stop.id.clone(),
+        distance_m,
+        scheduled_secs,
+        observed_secs: aligned_observed_secs,
+        score: time_error_secs / 45.0 + distance_m / 50.0,
+    })
 }
 
 fn score_candidate_trip(
@@ -950,11 +946,18 @@ fn score_candidate_trip(
     let mut delay_samples = vec![];
     let mut newest_match: Option<(u64, StopMatch)> = None;
 
-    for sample in samples {
+    // Decode the whole history before calculating scores or delays. Selecting
+    // a nearest stop independently loses the direction of an out-and-back leg.
+    let path = stop_path::match_stop_path(&samples, trip, candidate.start_time);
+    for (sample, stop_index) in samples.into_iter().zip(path) {
+        let Some(stop_index) = stop_index else {
+            continue;
+        };
         let observed_secs = la_seconds_past_midnight_from_epoch(sample.timestamp) as i32;
-        let Some(stop_match) = best_stop_match_for_sample(
+        let Some(stop_match) = stop_match_for_sample(
             &sample,
             trip,
+            stop_index,
             base_start_secs,
             candidate.start_time as i32,
             observed_secs,
