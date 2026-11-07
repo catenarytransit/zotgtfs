@@ -40,6 +40,7 @@ pub(super) fn match_stop_path(
     if samples.is_empty() || n == 0 {
         return empty();
     }
+    let is_loop = n >= 3 && trip.stop_times[0].stop.id == trip.stop_times[n - 1].stop.id;
     let coordinates: Vec<_> = trip.stop_times.iter().map(coords).collect();
     let mut cumulative = vec![0.0; n];
     for j in 1..n {
@@ -58,6 +59,12 @@ pub(super) fn match_stop_path(
             return empty();
         }
         for j in 0..n {
+            // At an unclassified first terminal observation, use the origin.
+            // The final occurrence requires an approach in this physical lap;
+            // the shared stop ID alone can never establish a completed loop.
+            if is_loop && t == 0 && j == n - 1 {
+                continue;
+            }
             let (Some(stop), Some(schedule)) =
                 (coordinates[j], stop_time_secs(&trip.stop_times[j]))
             else {
@@ -108,6 +115,12 @@ pub(super) fn match_stop_path(
             let displacement =
                 haversine_m(last_position.0, last_position.1, position.0, position.1);
             for i in 0..=j {
+                // Returning to the same coordinates is not evidence of a full
+                // lap. The final occurrence needs an observed approach state;
+                // it cannot be reached directly from the origin's dwell.
+                if is_loop && j == n - 1 && i < n - 2 {
+                    continue;
+                }
                 let route_distance = cumulative[j] - cumulative[i];
                 let mut transition =
                     ((route_distance - displacement).abs() / TRANSITION_BETA_M).min(50.0);
