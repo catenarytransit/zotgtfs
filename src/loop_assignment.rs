@@ -43,22 +43,29 @@ pub(super) struct TerminalVisit {
 }
 
 pub(super) fn trip_runs_today(gtfs: &Gtfs, trip: &Trip, now: u64) -> bool {
-    let date = chrono::DateTime::from_timestamp(now as i64, 0)
-        .unwrap()
-        .with_timezone(&chrono_tz::America::Los_Angeles)
-        .date_naive();
-    if let Some(exception) = gtfs
-        .calendar_dates
-        .get(&trip.service_id)
-        .and_then(|dates| dates.iter().find(|exception| exception.date == date))
-    {
+    let date = la_time(now).date();
+    if let Some(exception) = gtfs.calendar_dates.get(&trip.service_id).and_then(|dates| {
+        dates
+            .iter()
+            .find(|exception| exception.date.to_string().parse::<Date>().ok() == Some(date))
+    }) {
         return exception.exception_type == gtfs_structures::Exception::Added;
     }
     gtfs.calendar.get(&trip.service_id).is_some_and(|calendar| {
-        if date < calendar.start_date || date > calendar.end_date {
+        if date < calendar.start_date.to_string().parse::<Date>().unwrap()
+            || date > calendar.end_date.to_string().parse::<Date>().unwrap()
+        {
             return false;
         }
-        calendar.valid_weekday(date)
+        match date.weekday() {
+            jiff::civil::Weekday::Monday => calendar.monday,
+            jiff::civil::Weekday::Tuesday => calendar.tuesday,
+            jiff::civil::Weekday::Wednesday => calendar.wednesday,
+            jiff::civil::Weekday::Thursday => calendar.thursday,
+            jiff::civil::Weekday::Friday => calendar.friday,
+            jiff::civil::Weekday::Saturday => calendar.saturday,
+            jiff::civil::Weekday::Sunday => calendar.sunday,
+        }
     })
 }
 
@@ -288,13 +295,14 @@ pub(super) fn terminal_trip_matches(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
 
     fn at(seconds: u32) -> u64 {
-        (chrono_tz::America::Los_Angeles
-            .with_ymd_and_hms(2026, 11, 2, 0, 0, 0)
+        (jiff::civil::date(2026, 11, 2)
+            .at(0, 0, 0, 0)
+            .to_zoned(crate::timezone::get("America/Los_Angeles"))
             .unwrap()
             .timestamp()
+            .as_second()
             + seconds as i64) as u64
     }
 
@@ -343,7 +351,7 @@ mod tests {
             "active".into(),
             vec![gtfs_structures::CalendarDate {
                 service_id: "active".into(),
-                date: chrono::NaiveDate::from_ymd_opt(2026, 11, 2).unwrap(),
+                date: "2026-11-02".parse().unwrap(),
                 exception_type: gtfs_structures::Exception::Added,
             }],
         );
@@ -600,7 +608,7 @@ mod tests {
         let matches = terminal_trip_matches(&bus(1, 33.0, 0.0), &legacy, &gtfs, at(32750)).unwrap();
         assert_eq!(matches[0].trip_id, "next");
         gtfs.calendar_dates.clear();
-        let date = chrono::NaiveDate::from_ymd_opt(2026, 11, 2).unwrap();
+        let date = "2026-11-02".parse().unwrap();
         gtfs.calendar.insert(
             "active".into(),
             gtfs_structures::Calendar {

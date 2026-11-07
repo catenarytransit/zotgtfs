@@ -160,7 +160,6 @@ impl MinCostMaxFlow {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
 
     fn matched(id: &str, cost: f64) -> TripMatch {
         TripMatch {
@@ -205,10 +204,12 @@ mod tests {
     }
 
     fn at(seconds: u32) -> u64 {
-        (chrono_tz::America::Los_Angeles
-            .with_ymd_and_hms(2026, 11, 2, 0, 0, 0)
+        (jiff::civil::date(2026, 11, 2)
+            .at(0, 0, 0, 0)
+            .to_zoned(crate::timezone::get("America/Los_Angeles"))
             .unwrap()
             .timestamp()
+            .as_second()
             + seconds as i64) as u64
     }
 
@@ -251,7 +252,7 @@ mod tests {
             "active".into(),
             vec![gtfs_structures::CalendarDate {
                 service_id: "active".into(),
-                date: chrono::NaiveDate::from_ymd_opt(2026, 11, 2).unwrap(),
+                date: "2026-11-02".parse().unwrap(),
                 exception_type: gtfs_structures::Exception::Added,
             }],
         );

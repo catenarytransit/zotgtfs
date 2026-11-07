@@ -1,8 +1,9 @@
 use axum::{Router, extract::State, routing::get};
-use chrono::Timelike;
+mod timezone;
 use gtfs_realtime::vehicle_position::*;
 use gtfs_realtime::*;
 use gtfs_structures::{Gtfs, StopTime, Trip};
+use jiff::{Timestamp, civil::Date};
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -218,38 +219,30 @@ async fn save_history_to_disk(history: &HashMap<i16, VehicleHistory>) {
     }
 }
 
+fn la_time(epoch_secs: u64) -> jiff::Zoned {
+    Timestamp::from_second(i64::try_from(epoch_secs).expect("timestamp fits i64"))
+        .expect("valid timestamp")
+        .to_zoned(timezone::get("America/Los_Angeles"))
+}
+
 fn la_seconds_past_midnight_from_epoch(epoch_secs: u64) -> u32 {
-    let system_time = UNIX_EPOCH + Duration::from_secs(epoch_secs);
-    let utc_datetime: chrono::DateTime<chrono::Utc> = system_time.into();
-    let la_datetime = utc_datetime.with_timezone(&chrono_tz::America::Los_Angeles);
-    la_datetime.hour() * 3600 + la_datetime.minute() * 60 + la_datetime.second()
+    let local = la_time(epoch_secs);
+    local.hour() as u32 * 3600 + local.minute() as u32 * 60 + local.second() as u32
 }
 
 fn la_start_date_string_from_epoch(epoch_secs: u64) -> String {
-    let system_time = UNIX_EPOCH + Duration::from_secs(epoch_secs);
-    let utc_datetime: chrono::DateTime<chrono::Utc> = system_time.into();
-    utc_datetime
-        .with_timezone(&chrono_tz::America::Los_Angeles)
-        .format("%Y%m%d")
-        .to_string()
+    la_time(epoch_secs).strftime("%Y%m%d").to_string()
 }
 
 fn la_midnight_epoch_secs(epoch_secs: u64) -> i64 {
-    use chrono::{Datelike, TimeZone};
-    let system_time = UNIX_EPOCH + Duration::from_secs(epoch_secs);
-    let utc_datetime: chrono::DateTime<chrono::Utc> = system_time.into();
-    let la_datetime = utc_datetime.with_timezone(&chrono_tz::America::Los_Angeles);
-    chrono_tz::America::Los_Angeles
-        .with_ymd_and_hms(
-            la_datetime.year(),
-            la_datetime.month(),
-            la_datetime.day(),
-            12,
-            0,
-            0,
-        )
+    // GTFS service-day anchor: local noon minus twelve elapsed hours.
+    la_time(epoch_secs)
+        .date()
+        .at(12, 0, 0, 0)
+        .to_zoned(timezone::get("America/Los_Angeles"))
         .unwrap()
         .timestamp()
+        .as_second()
         - 43200
 }
 
@@ -1541,4 +1534,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod jiff_regressions {
+    use super::*;
+    fn epoch(value: &str) -> u64 {
+        value.parse::<Timestamp>().unwrap().as_second() as u64
+    }
+    #[test]
+    fn noon_based_service_anchor_survives_both_dst_transitions() {
+        assert_eq!(
+            la_midnight_epoch_secs(epoch("2026-03-08T19:00:00Z")),
+            epoch("2026-03-08T07:00:00Z") as i64
+        );
+        assert_eq!(
+            la_midnight_epoch_secs(epoch("2026-11-01T20:00:00Z")),
+            epoch("2026-11-01T08:00:00Z") as i64
+        );
+        assert_eq!(
+            la_start_date_string_from_epoch(epoch("2026-07-01T06:30:00Z")),
+            "20260630"
+        );
+        assert_eq!(
+            la_seconds_past_midnight_from_epoch(epoch("2026-07-01T06:30:00Z")),
+            23 * 3600 + 30 * 60
+        );
+    }
 }
